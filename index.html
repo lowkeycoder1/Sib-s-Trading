@@ -729,6 +729,16 @@ function logStock(p,change,note){
 const qtyOk=(p,q)=>q>0&&q<=MAX_QTY_PER_ITEM&&(p.unit==='kg'||Number.isInteger(q));
 const qtyHint=p=>p.unit==='kg'?'Enter a quantity above zero.':`Enter a whole number of ${p.unit}.`;
 
+// Keeps only digits and, if allowed, one decimal point (a comma is treated as a point). Also clears the red "wrong value" box.
+function sanitizeNumber(el){
+  const dec=parseInt(el.dataset.dec==null?'2':el.dataset.dec,10);
+  let v=String(el.value).replace(/,/g,'.').replace(/[^\d.]/g,'');
+  const i=v.indexOf('.');
+  if(i>=0){v=dec===0?v.replace(/\./g,''):v.slice(0,i+1)+v.slice(i+1).replace(/\./g,'').slice(0,dec);}
+  if(v!==el.value)el.value=v;
+  if(el.getAttribute('aria-invalid')==='true')el.setAttribute('aria-invalid','false');
+}
+
 /* =====================================================================
    PHONE NUMBERS  (IMPORTANT)
    ---------------------------------------------------------------------
@@ -1687,10 +1697,10 @@ function productFormHTML(p){
       <div class="field"><label for="pu">Sold per</label><select id="pu" name="unit"><option ${sel(p.unit,'kg')}>kg</option><option ${sel(p.unit,'pc')}>pc</option><option ${sel(p.unit,'pack')}>pack</option></select></div>
     </div>
     <div class="row2">
-      <div class="field"><label for="pp">Price per unit</label><input id="pp" name="price" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(p.price)}"></div>
-      <div class="field"><label for="pl">Low-stock alert at</label><input id="pl" name="low" type="number" min="0" step="0.1" inputmode="decimal" value="${esc(p.low)}"></div>
+      <div class="field"><label for="pp">Price per unit</label><input id="pp" name="price" type="text" inputmode="decimal" maxlength="10" value="${esc(p.price)}" data-input="num" data-dec="2"></div>
+      <div class="field"><label for="pl">Low-stock alert at</label><input id="pl" name="low" type="text" inputmode="decimal" maxlength="8" value="${esc(p.low)}" data-input="num" data-dec="2"></div>
     </div>
-    ${e?'':`<div class="field"><label for="po">Starting stock</label><input id="po" name="open" type="number" min="0" step="0.1" inputmode="decimal" value="0"><div class="hint">You can add more any time with Add stock.</div></div>`}
+    ${e?'':`<div class="field"><label for="po">Starting stock</label><input id="po" name="open" type="text" inputmode="decimal" maxlength="8" value="0" data-input="num" data-dec="2"><div class="hint">You can add more any time with Add stock.</div></div>`}
     <div class="modal-actions"><button type="button" class="btn" data-act="closeModal">Cancel</button><button class="btn primary">${e?'Save changes':'Add product'}</button></div>
   </form>`;
 }
@@ -1705,7 +1715,7 @@ function openStock(id){
   </div>
   <form data-form="stock" data-id="${esc(p.id)}" novalidate>
     <input type="hidden" name="mode" value="add">
-    <div class="field"><label id="stockLabel" for="sq">Quantity to add (${esc(p.unit)})</label><input id="sq" name="qty" type="number" min="0" step="0.1" inputmode="decimal" data-input="stockQty"></div>
+    <div class="field"><label id="stockLabel" for="sq">Quantity to add (${esc(p.unit)})</label><input id="sq" name="qty" type="text" inputmode="${p.unit==='kg'?'decimal':'numeric'}" maxlength="8" data-input="stockQty" data-dec="${p.unit==='kg'?2:0}"></div>
     <div class="preview" id="stockPreview">Current count: ${qf(p.stock)} ${esc(p.unit)}</div>
     <div class="field"><label for="sn">Note (optional)</label><input id="sn" name="note" maxlength="120" placeholder="e.g. Supplier delivery, spoiled, recount"></div>
     <div class="modal-actions"><button type="button" class="btn" data-act="closeModal">Cancel</button><button class="btn primary">Save stock</button></div>
@@ -1858,7 +1868,7 @@ function gridHTML(preview){   // preview = true: the admin's read-only copy (no 
       <div class="price">${money(p.price)}<small>/${esc(p.unit)}</small></div>
       <div class="avail ${cls}">${txt}</div>
       ${p.stock<=0||preview?'':`<div class="buy"><label class="sr" for="qty-${esc(p.id)}">Quantity in ${esc(p.unit)}</label>
-      <input id="qty-${esc(p.id)}" type="number" min="${step}" step="${step}" inputmode="decimal" value="1" ${dis} data-input="clearInvalid"><span class="unit">${esc(p.unit)}</span>
+      <input id="qty-${esc(p.id)}" type="text" inputmode="${p.unit==='kg'?'decimal':'numeric'}" maxlength="7" value="1" ${dis} data-input="num" data-dec="${p.unit==='kg'?2:0}"><span class="unit">${esc(p.unit)}</span>
       <button type="button" class="btn primary sm" data-act="addCart" data-id="${esc(p.id)}" ${dis}>Add</button></div>`}</article>`;
   }).join('');
 }
@@ -1869,7 +1879,7 @@ function cartHTML(){
   return `<h2>Your basket</h2><ul class="plain">${lines.map(l=>`<li class="cline">
     <div><div class="nm">${esc(l.p.name)}</div><div class="sub">${money(l.p.price)}/${esc(l.p.unit)}</div></div>
     <button type="button" class="icon" data-act="removeCart" data-id="${esc(l.p.id)}" aria-label="Remove ${esc(l.p.name)}">✕</button>
-    <div class="qty"><label class="sr" for="cq-${esc(l.p.id)}">Quantity of ${esc(l.p.name)}</label><input id="cq-${esc(l.p.id)}" type="number" min="0" step="${l.p.unit==='kg'?'0.1':'1'}" inputmode="decimal" value="${l.qty}" data-change="cartQty" data-id="${esc(l.p.id)}"><span class="sub">${esc(l.p.unit)}</span></div>
+    <div class="qty"><label class="sr" for="cq-${esc(l.p.id)}">Quantity of ${esc(l.p.name)}</label><input id="cq-${esc(l.p.id)}" type="text" inputmode="${l.p.unit==='kg'?'decimal':'numeric'}" maxlength="7" value="${l.qty}" data-input="num" data-dec="${l.p.unit==='kg'?2:0}" data-change="cartQty" data-id="${esc(l.p.id)}"><span class="sub">${esc(l.p.unit)}</span></div>
     <div class="amt">${money(l.amt)}</div></li>`).join('')}</ul>
     <div class="totalrow"><span>Total</span><span>${money(total)}</span></div>
     <button type="button" class="btn primary block" data-act="checkout">Place order</button>
@@ -2159,8 +2169,10 @@ const inputs={
   pvQ(el){state.pvQ=el.value;const g=$('#pvGrid');if(g)g.innerHTML=gridHTML(true);},
   invQ(el){state.invQ=el.value;const b=$('#invBody');if(b)b.innerHTML=inventoryTableHTML();},
   orderQ(el){state.orderQ=el.value;const b=$('#ordBody');if(b)b.innerHTML=ordersListHTML();},
-  stockQty(){updateStockPreview();},
-  clearInvalid(el){el.setAttribute('aria-invalid','false');},   // the red box goes away as soon as the person edits it
+  stockQty(el){sanitizeNumber(el);updateStockPreview();},
+  // Number boxes (quantities, prices): only digits and one decimal point are kept. Letters such as "e", and + or -, are removed
+  // as they are typed or pasted. data-dec says how many decimals are allowed (0 = whole numbers only).
+  num(el){sanitizeNumber(el);},
   // Contact numbers: anything that is not a digit (or a leading +) is removed as it is typed or pasted.
   phone(el){const c=cleanPhoneInput(el.value);if(c!==el.value)el.value=c;if(el.getAttribute('aria-invalid')==='true')setFieldError(el,'');}
 };
