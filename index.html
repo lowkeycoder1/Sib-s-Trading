@@ -373,6 +373,34 @@ code{font-family:ui-monospace,'Courier New',monospace;font-size:.9em;background:
 @keyframes viewin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.sk,.nav-progress,.view-in{animation:none}}
 
+/* ===== Admin: customer view preview ===== */
+.card-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;margin-bottom:12px}
+.mini-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.mini{display:flex;flex-direction:column;gap:2px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.mini-price{font-family:var(--f-display);font-weight:800;font-size:20px}
+.mini-price small{font-family:var(--f-body);font-weight:500;font-size:13px;color:var(--muted)}
+.pv-seg{margin:0;min-width:210px}
+.pv-frame{margin:0 auto;border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden;width:100%}
+.pv-frame.phone{max-width:400px;border-radius:30px;border-width:8px;border-color:var(--pine)}
+.pv-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--paper);border-bottom:1px solid var(--line)}
+.pv-dots{display:flex;gap:6px}
+.pv-dots i{width:10px;height:10px;border-radius:50%;background:var(--line)}
+.pv-url{flex:1;text-align:center;font-size:13px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 12px}
+.pv-screen{background:var(--paper);max-height:72vh;overflow:auto}
+.pv-top{background:var(--pine);color:#fff;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;padding:10px 18px}
+.pv-top .brand{font-size:18px;gap:8px}
+.pv-top .mark{width:28px;height:28px;font-size:16px;border-radius:8px}
+.pv-tabs{display:flex;gap:4px;flex-wrap:wrap}
+.pv-tab{color:#D5DED8;font-weight:700;font-size:14px;padding:6px 12px;border-radius:8px}
+.pv-tab.on{background:rgba(255,255,255,.14);color:#fff;box-shadow:inset 0 -3px 0 var(--saffron)}
+.pv-body{padding:18px}
+.pv-shop{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px;align-items:start}
+.pv-h{font-size:26px;font-weight:800}
+.pv-frame .cart{position:static}
+.pv-frame .pcard{cursor:default}
+.pv-frame.phone .grid{grid-template-columns:1fr}   /* a phone shows one column, like the real shop */
+@media(max-width:700px){.pv-shop{grid-template-columns:1fr}.pv-seg{min-width:0;width:100%}}
+
 @media print{
   :root{padding:0}
   body{background:#fff}
@@ -407,6 +435,7 @@ const ORDER_NUMBER_OFFSET=10000;          // The first new order is OFFSET + 1.
 const LOW_STOCK_DEFAULT=5;                // Pre-filled "Low-stock alert" when adding a product.
 const MAX_QTY_PER_ITEM=500;               // Largest quantity one customer can order of a single product.
 const MIN_PASSWORD_LENGTH=6;              // Firebase itself also requires at least 6.
+const SESSION_IDLE_MINUTES=720;           // Log out automatically after this many minutes with no click or key press in any open tab (720 = 12 hours). 0 = never.
 const PAGE_TRANSITION_MS=600;             // How long the loading animation shows when you change tabs (milliseconds). 0 = switch instantly.
 const MAX_TRIES=3;                        // Wrong log in tries before log in is paused...
 const LOCK_MS=60000;                      // ...and how long the pause lasts (60000 = 1 minute).
@@ -455,7 +484,9 @@ const DEFAULT_ADMIN_PASSWORD='admin123';
 /* IMPORTANT:
    Do not change the values below unless you understand the consequences.
    Changing a storage key makes local mode start with an empty database. */
-const KEY='sibs-trading:v1', LOCK_KEY='sibs-trading:lock', SESSION_KEY='sibs-trading:session';
+const KEY='sibs-trading:v1', LOCK_KEY='sibs-trading:lock', SESSION_KEY='sibs-trading:session', ACTIVITY_KEY='sibs-trading:last-active';
+// 'SIBS_SESSION_SCOPE' is a test hook that lets tests act like separate browsers on one machine. Leave it unset.
+const SCOPE=typeof window.SIBS_SESSION_SCOPE==='string'?window.SIBS_SESSION_SCOPE:'';
 const PBKDF2_ITERATIONS=150000;
 const MAX_STOCK_LOG=5000;
 const MAX_ERROR_LOG=100;
@@ -512,6 +543,7 @@ const ICONS={
   plus:'<path d="M12 5v14M5 12h14"/>',
   download:'<path d="M12 4v11M7 11l5 5 5-5"/><path d="M5 20h14"/>',
   menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',
+  eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   print:'<path d="M7 9V3h10v6"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v7H7z"/>'
 };
 const icon=n=>`<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[n]||''}</svg>`;
@@ -562,7 +594,7 @@ const cloud={m:null,auth:null,db:null,userSubs:[],pubSubs:[],warned:{},firstAuth
 const state={session:null,view:'',loginMode:'login',loginMsg:'',loginUser:'',shopQ:'',shopCat:'all',cart:{},
   invTab:'products',invQ:'',invSort:'name',invFilter:'all',histProduct:'all',orderFilter:'all',orderQ:'',
   reportRange:'7',bellOpen:false,noStorage:false,busy:false,ordering:false,registering:false,
-  cloudFailed:false,announced:null,notifsLoaded:false,menuOpen:false,loading:false,navToken:0};
+  cloudFailed:false,announced:null,notifsLoaded:false,menuOpen:false,loading:false,navToken:0,pvQ:'',pvCat:'all',pvDevice:'desktop'};
 let lockTimer=null,lastFocus=null,confirmCb=null,warnedSave=false;
 
 const SAMPLE_PRODUCTS=[
@@ -901,7 +933,7 @@ async function cloudInit(){
   const m=Object.assign({},mods[0],mods[1],mods[2]);
   const app=m.initializeApp(FIREBASE_CONFIG);
   const auth=m.getAuth(app);
-  try{await m.setPersistence(auth,m.browserSessionPersistence);}catch(e){}   // closing the tab logs the person out
+  try{await m.setPersistence(auth,m.browserLocalPersistence);}catch(e){}   // the login is shared by all tabs of this browser, and kept until log out or the inactivity limit
   cloud.m=m;cloud.auth=auth;cloud.db=m.getDatabase(app);
 }
 // Starts listening to a path. Returns a function that stops listening.
@@ -992,6 +1024,9 @@ async function onAuthChange(user){
       return;
     }
     if(state.session&&state.session.uid===user.uid)return;
+    if(idleExpired()){   // restored from an earlier visit, but unused for too long
+      await cloud.m.signOut(cloud.auth);state.loginMsg='Your session ended because of inactivity. Please log in again.';render();return;
+    }
     await establishSession(user);
   }finally{if(cloud.firstAuth){cloud.firstAuth();cloud.firstAuth=null;}}
 }
@@ -1002,6 +1037,8 @@ async function establishSession(user){
   let profile=null;
   if(!isAdm){
     profile=(await m.get(R('users/'+user.uid))).val();
+    // Another tab may still be finishing sign-up (the account exists a moment before its profile is saved), so wait briefly.
+    for(let i=0;i<6&&!profile;i++){await sleep(400);profile=(await m.get(R('users/'+user.uid))).val();}
     if(!profile||profile.disabled===true){
       await m.signOut(cloud.auth);
       state.loginMsg=`This account is not active. Please contact ${APP_NAME}.`;render();return;
@@ -1286,9 +1323,49 @@ const cloudStore={
 /* =====================================================================
    SESSION
    ===================================================================== */
+/* ---- One login shared by every tab of the same browser ----
+   The login is saved in the browser (not in each tab), so opening the site in a second tab opens the account
+   that is already logged in, and a login page left open switches to it too. Logging out in one tab logs out all of them.
+   To switch accounts, log out first. (Cloud mode: Firebase Authentication shares the login between tabs the same way.) */
+function storeSession(){if(MODE==='local'&&state.session)wr('localStorage',SESSION_KEY+SCOPE,JSON.stringify(state.session));}
+function readStoredSession(){
+  try{
+    const s=JSON.parse(rd('localStorage',SESSION_KEY+SCOPE)||'null');
+    if(!s||!s.username)return null;
+    // The role is always taken from the database, never from what the saved session says.
+    if(s.role==='admin'&&db.admin&&s.username===db.admin.username)return {role:'admin',uid:db.admin.username,username:db.admin.username,name:'Admin',defaultPw:!!s.defaultPw};
+    if(s.role==='user'){const a=db.users.find(u=>u.username===s.username);if(a)return {role:'user',uid:a.username,username:a.username,name:a.name};}
+  }catch(e){}
+  return null;
+}
+// Automatic log out after a period with no clicks or key presses (in any tab). Set SESSION_IDLE_MINUTES to 0 to turn this off.
+let lastTouch=0;
+function touchActivity(force){const now=Date.now();if(!force&&now-lastTouch<30000)return;lastTouch=now;wr('localStorage',ACTIVITY_KEY+SCOPE,String(now));}
+function idleExpired(){
+  if(!SESSION_IDLE_MINUTES)return false;
+  const t=Number(rd('localStorage',ACTIVITY_KEY+SCOPE));
+  return !!t&&Date.now()-t>SESSION_IDLE_MINUTES*60000;
+}
+['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,()=>{if(state.session)touchActivity();},{passive:true}));
+setInterval(()=>{if(state.session&&idleExpired())safe(idleLogout);},60000);
+async function idleLogout(){await logout();state.loginMsg='You were logged out because of inactivity.';render();}
+// Another tab logged in or out: follow it.
+function onSessionChangedElsewhere(){
+  syncFromStorage();
+  const rs=readStoredSession();
+  if(!rs){
+    if(state.session){state.session=null;state.cart={};state.loading=false;state.navToken++;state.bellOpen=false;state.menuOpen=false;state.loginMode='login';closeModal();render();}
+    return;
+  }
+  if(state.session&&state.session.uid===rs.uid&&state.session.role===rs.role)return;
+  closeModal();
+  state.session=rs;state.view=rs.role==='admin'?'dashboard':'shop';state.cart={};state.loginMsg='';state.loginUser='';state.loginMode='login';
+  state.bellOpen=false;state.menuOpen=false;state.loading=false;state.navToken++;state.announced=null;announceNew();
+  render();
+}
 function startSession(role,acct,extra){
   state.session=Object.assign({role,uid:acct.uid||acct.username,username:acct.username||'',name:acct.name||'Admin'},extra||{});
-  if(MODE==='local')wr('sessionStorage',SESSION_KEY,JSON.stringify(state.session));
+  storeSession();touchActivity(true);
   state.view=role==='admin'?'dashboard':'shop';state.cart={};state.loginMsg='';state.loginUser='';state.bellOpen=false;state.menuOpen=false;state.loading=false;state.navToken++;state.loginMode='login';
   if(MODE==='local'){state.announced=null;announceNew();}   // remember what is already there so old notifications don't pop up
   render();window.scrollTo(0,0);
@@ -1300,9 +1377,9 @@ async function logout(){
     try{await cloud.m.signOut(cloud.auth);}catch(e){}
     return;
   }
-  state.session=null;rm('sessionStorage',SESSION_KEY);render();
+  state.session=null;rm('localStorage',SESSION_KEY+SCOPE);render();
 }
-function saveSession(){if(MODE==='local')wr('sessionStorage',SESSION_KEY,JSON.stringify(state.session));}
+function saveSession(){storeSession();}
 
 /* =====================================================================
    LOGIN SCREEN  (one login for customers and admin)
@@ -1350,7 +1427,7 @@ function renderLogin(){
 function renderShell(){
   const admin=state.session.role==='admin';
   const tabs=admin
-    ?[['dashboard','Dashboard','home'],['orders','Orders','clipboard'],['inventory','Inventory','box'],['customers','Customers','users'],['reports','Reports','chart'],['settings','Settings','cog']]
+    ?[['dashboard','Dashboard','home'],['orders','Orders','clipboard'],['inventory','Inventory','box'],['customers','Customers','users'],['reports','Reports','chart'],['preview','Customer view','eye'],['settings','Settings','cog']]
     :[['shop','Shop','cart'],['myorders','My orders','clipboard'],['account','Account','user']];
   const banners=`${state.noStorage?'<div class="banner">Saving is turned off in this browser, so changes will be lost when you close the page.</div>':''}
     ${USE_FIREBASE&&MODE==='local'?'<div class="banner">Cloud database not reachable. Running in local mode: data stays on this device only.</div>':''}
@@ -1476,7 +1553,9 @@ function viewDashboard(){
     <section class="card"><h2>Latest orders</h2>
       ${db.orders.length?db.orders.slice(0,6).map(o=>`<div class="row"><div class="grow"><b>${esc(o.no)}</b> ${statusBadge(o.status)}<div class="muted" style="font-size:14px">${esc(o.customer.name)} – ${money(o.total,o.currency)}</div></div><button type="button" class="btn sm" data-act="orderDetail" data-id="${esc(o.id)}">Details</button></div>`).join(''):'<div class="empty sm">No orders yet. They will appear here as customers order.</div>'}
     </section>
-  </div>`;
+  </div>
+  ${db.products.length?`<section class="card" style="margin-top:16px"><div class="card-head"><div><h2>Customer view</h2><p class="muted" style="margin:2px 0 0">A quick look at what customers see in the shop.</p></div><button type="button" class="btn sm" data-act="nav" data-v="preview">${icon('eye')}Open full preview</button></div>
+    <div class="mini-grid">${db.products.slice(0,4).map(miniCardHTML).join('')}</div></section>`:''}`;
 }
 
 /* =====================================================================
@@ -1682,15 +1761,15 @@ function cartLines(){
   });
   return out;
 }
-function gridHTML(){
-  const q=state.shopQ.trim().toLowerCase();
-  const list=db.products.filter(p=>(state.shopCat==='all'||p.cat===state.shopCat)&&(p.name.toLowerCase().includes(q)||(p.desc||'').toLowerCase().includes(q)));
+function gridHTML(preview){   // preview = true: the admin's read-only copy (no basket, no order buttons)
+  const q=(preview?state.pvQ:state.shopQ).trim().toLowerCase(),cat=preview?state.pvCat:state.shopCat;
+  const list=db.products.filter(p=>(cat==='all'||p.cat===cat)&&(p.name.toLowerCase().includes(q)||(p.desc||'').toLowerCase().includes(q)));
   const none=db.products.length>0&&db.products.every(p=>p.stock<=0);
   const note=none?'<div class="card notice empty">Nothing is in stock right now. Please check back soon.</div>':'';
   if(!db.products.length)return '<div class="card notice empty">No products are listed yet. Please check back soon.</div>';
   if(!list.length)return note+'<div class="card notice empty">No products match your search. Try another name or category.</div>';
   return note+list.map(p=>{
-    const inCart=state.cart[p.id]||0,avail=r2(Math.max(0,p.stock-inCart));
+    const inCart=preview?0:(state.cart[p.id]||0),avail=r2(Math.max(0,p.stock-inCart));
     const step=p.unit==='kg'?'0.1':'1',dis=avail<=0?'disabled':'';
     let cls='ok',txt=`${qf(avail)} ${p.unit} available`;
     if(p.stock<=0){cls='bad';txt='Sold out';}
@@ -1701,7 +1780,7 @@ function gridHTML(){
       ${p.desc?`<p class="desc">${esc(p.desc)}</p>`:''}
       <div class="price">${money(p.price)}<small>/${esc(p.unit)}</small></div>
       <div class="avail ${cls}">${txt}</div>
-      ${p.stock<=0?'':`<div class="buy"><label class="sr" for="qty-${esc(p.id)}">Quantity in ${esc(p.unit)}</label>
+      ${p.stock<=0||preview?'':`<div class="buy"><label class="sr" for="qty-${esc(p.id)}">Quantity in ${esc(p.unit)}</label>
       <input id="qty-${esc(p.id)}" type="number" min="${step}" step="${step}" inputmode="decimal" value="1" ${dis}><span class="unit">${esc(p.unit)}</span>
       <button type="button" class="btn primary sm" data-act="addCart" data-id="${esc(p.id)}" ${dis}>Add</button></div>`}</article>`;
   }).join('');
@@ -1786,7 +1865,41 @@ function checkoutHTML(){
   </form>`;
 }
 
-const views={dashboard:viewDashboard,inventory:viewInventory,orders:viewOrders,customers:viewCustomers,reports:viewReports,settings:viewSettings,shop:viewShop,myorders:viewMyOrders,account:viewAccount};
+// ---- Admin: preview of the customer view (read-only) ----
+function availText(p){
+  if(p.stock<=0)return {cls:'bad',txt:'Sold out'};
+  if(p.stock<=p.low)return {cls:'warn',txt:`Only ${qf(p.stock)} ${p.unit} left`};
+  return {cls:'ok',txt:`${qf(p.stock)} ${p.unit} available`};
+}
+function miniCardHTML(p){
+  const a=availText(p);
+  return `<div class="mini"><b>${esc(p.name)}</b><span class="mini-price">${money(p.price)}<small>/${esc(p.unit)}</small></span><span class="avail ${a.cls}">${a.txt}</span></div>`;
+}
+function viewPreview(){
+  if(!isAdmin())return '';
+  const phone=state.pvDevice==='phone';
+  const chip=(k,l)=>`<button type="button" class="chip${state.pvCat===k?' on':''}" aria-pressed="${state.pvCat===k}" data-act="pvCat" data-v="${k}">${l}</button>`;
+  return `<div class="page-head"><h1>Customer view</h1>
+    <div class="acts"><div class="seg pv-seg" role="group" aria-label="Preview size"><button type="button" class="${phone?'':'on'}" aria-pressed="${!phone}" data-act="pvDevice" data-v="desktop">Desktop</button><button type="button" class="${phone?'on':''}" aria-pressed="${phone}" data-act="pvDevice" data-v="phone">Phone</button></div>
+    <button type="button" class="btn" data-act="nav" data-v="inventory">${icon('box')}Manage inventory</button></div></div>
+  <p class="muted">This is what customers see in the shop. It is a read-only preview: ordering is switched off here. Prices, descriptions and stock update live as you change them.</p>
+  <div class="pv-frame ${phone?'phone':''}" aria-label="Customer view preview">
+    <div class="pv-bar" aria-hidden="true"><span class="pv-dots"><i></i><i></i><i></i></span><span class="pv-url">${esc(APP_NAME)}</span></div>
+    <div class="pv-screen">
+      <div class="pv-top" aria-hidden="true"><span class="brand"><span class="mark">S</span>${esc(APP_NAME)}</span><span class="pv-tabs"><span class="pv-tab on">Shop</span><span class="pv-tab">My orders</span><span class="pv-tab">Account</span></span></div>
+      <div class="pv-body">
+        <div class="${phone?'':'pv-shop'}"><section>
+          <div class="shop-head"><h2 class="pv-h">Order fresh stock</h2>
+            <div class="toolbar"><div class="search">${icon('search')}<label class="sr" for="pvq">Search the customer view</label><input id="pvq" type="search" placeholder="Search products" value="${esc(state.pvQ)}" data-input="pvQ"></div></div>
+            <div class="chips">${chip('all','All')}${chip('cuts','Whole &amp; cuts')}${chip('by','By-products')}</div></div>
+          <div id="pvGrid" class="grid">${gridHTML(true)}</div></section>
+          ${phone?'':`<aside class="card cart"><h2>Your basket</h2><div class="empty sm">Your basket is empty. Add products from the list.</div></aside>`}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+const views={preview:viewPreview,dashboard:viewDashboard,inventory:viewInventory,orders:viewOrders,customers:viewCustomers,reports:viewReports,settings:viewSettings,shop:viewShop,myorders:viewMyOrders,account:viewAccount};
 
 /* =====================================================================
    ACTIONS (button clicks)
@@ -1820,7 +1933,7 @@ const actions={
     if(!state.session)return;
     closeModal();
     syncFromStorage();   // local mode: pick up the latest saved data (cloud mode is already live)
-    state.shopQ='';state.shopCat='all';state.invQ='';state.invFilter='all';state.invSort='name';state.invTab='products';state.orderQ='';state.orderFilter='all';
+    state.shopQ='';state.shopCat='all';state.pvQ='';state.pvCat='all';state.invQ='';state.invFilter='all';state.invSort='name';state.invTab='products';state.orderQ='';state.orderFilter='all';
     goTo(state.session.role==='admin'?'dashboard':'shop');
   },
   toggleBell(){state.bellOpen=!state.bellOpen;refreshBell();},
@@ -1844,6 +1957,8 @@ const actions={
     if(o&&(isAdmin()||ownsOrder(o)))openOrderDetail(o);else toast('That order could not be found.','bad');
   },
   shopCat(el){state.shopCat=el.dataset.v;renderView();},
+  pvCat(el){state.pvCat=el.dataset.v;renderView();},
+  pvDevice(el){state.pvDevice=el.dataset.v;renderView();},
   addCart(el){
     const id=el.dataset.id,p=db.products.find(x=>x.id===id);if(!p)return;
     const input=$('#qty-'+id),q=r2(parseFloat(input&&input.value));
@@ -1955,6 +2070,7 @@ const changes={
 };
 const inputs={
   shopQ(el){state.shopQ=el.value;const g=$('#grid');if(g)g.innerHTML=gridHTML();},
+  pvQ(el){state.pvQ=el.value;const g=$('#pvGrid');if(g)g.innerHTML=gridHTML(true);},
   invQ(el){state.invQ=el.value;const b=$('#invBody');if(b)b.innerHTML=inventoryTableHTML();},
   orderQ(el){state.orderQ=el.value;const b=$('#ordBody');if(b)b.innerHTML=ordersListHTML();},
   stockQty(){updateStockPreview();}
@@ -2175,7 +2291,11 @@ function onExternalChange(){
   const busy=document.activeElement&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
   if(!$('#modal-root .backdrop')&&!busy&&views[state.view])renderView();
 }
-window.addEventListener('storage',e=>{if(MODE==='local'&&e.key===KEY)safe(onExternalChange);});
+window.addEventListener('storage',e=>{
+  if(MODE!=='local')return;
+  if(e.key===KEY)safe(onExternalChange);
+  if(e.key===SESSION_KEY+SCOPE)safe(onSessionChangedElsewhere);
+});
 
 /* =====================================================================
    START
@@ -2186,14 +2306,10 @@ async function initLocal(){
   try{db=raw?JSON.parse(raw):null;}catch(e){db=null;}
   if(!db||!db.products){db=await seed();}
   migrate(db);save();
-  // Restore the session only if the account it names still exists, and take the ROLE from the database, never from the saved session.
-  try{
-    const s=JSON.parse(rd('sessionStorage',SESSION_KEY)||'null');
-    if(s&&s.username){
-      if(s.username===db.admin.username&&s.role==='admin'){state.session={role:'admin',uid:db.admin.username,username:db.admin.username,name:'Admin',defaultPw:!!s.defaultPw};state.view='dashboard';}
-      else if(s.role==='user'){const a=db.users.find(u=>u.username===s.username);if(a){state.session={role:'user',uid:a.username,username:a.username,name:a.name};state.view='shop';}}
-    }
-  }catch(e){}
+  // Restore the shared login if the account it names still exists (the ROLE comes from the database, never from the saved session).
+  let rs=readStoredSession();
+  if(rs&&idleExpired()){rs=null;rm('localStorage',SESSION_KEY+SCOPE);state.loginMsg='Your session ended because of inactivity. Please log in again.';}
+  if(rs){state.session=rs;state.view=rs.role==='admin'?'dashboard':'shop';}
   store=localStore;MODE='local';
   announceNew();
   render();
