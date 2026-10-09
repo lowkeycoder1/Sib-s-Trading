@@ -303,6 +303,54 @@ code{font-family:ui-monospace,'Courier New',monospace;font-size:.9em;background:
 
 .callout .acts{display:flex;flex-wrap:wrap;gap:8px}
 
+/* ===== Admin layout: sidebar + top bar ===== */
+.admin-shell{display:grid;grid-template-columns:252px minmax(0,1fr);min-height:100dvh}
+.sidebar{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));background:var(--pine);color:#fff;display:flex;flex-direction:column;padding:18px 14px;overflow-y:auto;z-index:60}
+.sb-brand{display:flex;align-items:center;gap:12px;padding:4px 8px 18px;border-bottom:1px solid rgba(255,255,255,.12);margin-bottom:14px}
+.sb-name{display:flex;flex-direction:column;align-items:flex-start;gap:4px;font-family:var(--f-display);font-weight:800;font-size:19px;letter-spacing:-.01em;line-height:1.1}
+.sidebar nav{display:flex;flex-direction:column;gap:4px;flex:1;overflow:visible;order:0;width:auto}
+.sidebar .tab{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:11px 14px;border-radius:10px;font-size:15px;min-height:44px;color:#D5DED8}
+.sidebar .tab .ic{width:20px;height:20px}
+.sidebar .tab:hover{background:rgba(255,255,255,.08);color:#fff}
+.sidebar .tab[aria-current="page"]{background:rgba(255,255,255,.14);color:#fff;box-shadow:inset 3px 0 0 var(--saffron)}
+.sb-foot{border-top:1px solid rgba(255,255,255,.12);padding-top:14px;margin-top:14px;display:flex;flex-direction:column;gap:12px}
+.sb-user{display:flex;align-items:center;gap:10px;min-width:0}
+.avatar{flex:none;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.16);display:grid;place-items:center;font-weight:800}
+.sb-uname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.sidebar .btn{background:transparent;color:#fff;border-color:rgba(255,255,255,.4);width:100%}
+.sidebar .btn:hover{background:rgba(255,255,255,.1)}
+.main-col{min-width:0;display:flex;flex-direction:column;min-height:100dvh}
+.main-col .wrap{width:100%;max-width:1280px;margin:0 auto;flex:1}
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:30;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:10px 24px;min-height:62px}
+.crumb{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:15px}
+.crumb b{color:var(--ink)}
+.topbar .who{margin-left:auto;display:flex;align-items:center;gap:12px}
+.topbar .icon-btn{border-color:var(--line);color:var(--ink);background:var(--surface)}
+.topbar .icon-btn:hover{background:var(--paper)}
+.menu-btn{display:none;background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:10px;width:42px;height:42px;place-items:center;cursor:pointer}
+.menu-btn .ic{width:22px;height:22px;margin:0}
+.sb-scrim{display:none}
+.bp-acts{display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:980px){
+  .admin-shell{grid-template-columns:minmax(0,1fr)}
+  .sidebar{position:fixed;left:0;top:0;bottom:0;align-self:stretch;height:100dvh;width:min(290px,84vw);transform:translateX(-102%);transition:transform .22s ease;padding-top:calc(18px + env(safe-area-inset-top,0px));padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}
+  .menu-open .sidebar{transform:none;box-shadow:var(--shadow)}
+  .menu-open .sb-scrim{display:block;position:fixed;inset:0;background:rgba(8,18,14,.55);z-index:55}
+  .menu-btn{display:grid}
+  .topbar{padding:10px 14px}
+}
+@media(prefers-reduced-motion:reduce){.sidebar{transition:none}}
+
+/* table action buttons stay on one line next to the sidebar */
+.btn{white-space:nowrap}
+@media(min-width:721px){
+  .table-wrap td.full{white-space:nowrap;width:1%}
+  .table-wrap td.full .acts{flex-wrap:nowrap;gap:6px}
+  .table-wrap .btn.sm{padding:6px 10px}
+}
+
+.nw{white-space:nowrap}
+
 @media print{
   :root{padding:0}
   body{background:#fff}
@@ -370,6 +418,8 @@ const NOTIFY_CUSTOMER_ORDER_RECEIVED=true;        // Customer is told right away
 // Choose from: 'confirmed', 'processing', 'ready', 'completed', 'cancelled'.
 const NOTIFY_CUSTOMER_ON_STATUSES=['ready'];
 const SHOW_NOTIFICATION_TOASTS=true;              // Pop-up message when a new notification arrives while the app is open.
+const NOTIFICATION_SOUND=true;                    // Play a short chime when a notification arrives. Each person can also switch it off in the bell panel.
+// Note: browsers only allow sound after the person has clicked or tapped the page at least once (for example the log in click).
 const MAX_NOTIFICATIONS_KEPT=200;                 // Local mode only: older notifications are dropped after this many.
 // Email, SMS and phone push notifications are NOT part of this file. They need a server.
 // See SYSTEM_RECOMMENDATIONS.md.
@@ -438,6 +488,7 @@ const ICONS={
   search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
   download:'<path d="M12 4v11M7 11l5 5 5-5"/><path d="M5 20h14"/>',
+  menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',
   print:'<path d="M7 9V3h10v6"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v7H7z"/>'
 };
 const icon=n=>`<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[n]||''}</svg>`;
@@ -488,7 +539,7 @@ const cloud={m:null,auth:null,db:null,userSubs:[],pubSubs:[],warned:{},firstAuth
 const state={session:null,view:'',loginMode:'login',loginMsg:'',loginUser:'',shopQ:'',shopCat:'all',cart:{},
   invTab:'products',invQ:'',invSort:'name',invFilter:'all',histProduct:'all',orderFilter:'all',orderQ:'',
   reportRange:'7',bellOpen:false,noStorage:false,busy:false,ordering:false,registering:false,
-  cloudFailed:false,announced:null,notifsLoaded:false};
+  cloudFailed:false,announced:null,notifsLoaded:false,menuOpen:false};
 let lockTimer=null,lastFocus=null,confirmCb=null,warnedSave=false;
 
 const SAMPLE_PRODUCTS=[
@@ -659,12 +710,38 @@ function pushLocalNotice(audience,to,rec){
   if(db.notifications.length>MAX_NOTIFICATIONS_KEPT)db.notifications.length=MAX_NOTIFICATIONS_KEPT;
 }
 
+/* ---- Notification sound (generated in the browser, no sound file needed) ---- */
+let audioCtx=null;
+function unlockAudio(){
+  try{
+    if(!audioCtx){const AC=window.AudioContext||window.webkitAudioContext;if(AC)audioCtx=new AC();}
+    if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
+  }catch(e){}
+}
+const soundOn=()=>NOTIFICATION_SOUND&&rd('localStorage','sibs-trading:sound')!=='0';
+function playChime(force){
+  if(!NOTIFICATION_SOUND||(!force&&!soundOn()))return;
+  try{
+    unlockAudio();if(!audioCtx)return;
+    const t0=audioCtx.currentTime;
+    [[880,0],[1318.5,0.16]].forEach(([freq,delay])=>{   // two quick notes: "ding-dong"
+      const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+      o.type='sine';o.frequency.value=freq;o.connect(g);g.connect(audioCtx.destination);
+      g.gain.setValueAtTime(0.0001,t0+delay);
+      g.gain.exponentialRampToValueAtTime(0.22,t0+delay+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001,t0+delay+0.5);
+      o.start(t0+delay);o.stop(t0+delay+0.55);
+    });
+  }catch(e){}
+}
+['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,unlockAudio,{passive:true}));
+
 function notifPanelHTML(){
   const list=myNotifs().slice(0,30),admin=state.session.role==='admin';
   const item=n=>admin
     ?`<b>New order received</b><span>Order #${esc(n.no)}</span><span>Customer: ${esc(n.customer)}</span><span>Items: ${n.itemCount}</span><span>Total: ${money(n.total,n.currency)}</span>`
     :`<b>${esc(n.title)}</b><span>${esc(n.message)}</span>`;
-  return `<div class="bp-head"><h2>Notifications</h2>${unreadCount()?'<button type="button" class="linkbtn" data-act="readAll">Mark all as read</button>':''}</div>`+
+  return `<div class="bp-head"><h2>Notifications</h2><div class="bp-acts">${NOTIFICATION_SOUND?`<button type="button" class="linkbtn" data-act="toggleSound" aria-pressed="${soundOn()}">Sound: ${soundOn()?'on':'off'}</button>`:''}${unreadCount()?'<button type="button" class="linkbtn" data-act="readAll">Mark all as read</button>':''}</div></div>`+
   (list.length?`<ul class="plain">${list.map(n=>`<li><button type="button" class="notif ${n.read?'':'unread'}" data-act="openNotif" data-id="${esc(n.id)}">
     <span class="dot" aria-hidden="true"></span><span class="nb">${item(n)}<time datetime="${esc(n.date)}">${timeAgo(n.date)}</time></span></button></li>`).join('')}</ul>`
   :`<div class="empty sm">No notifications yet. ${admin?'New orders will appear here.':'Updates about your orders will appear here.'}</div>`);
@@ -687,8 +764,10 @@ function announceNew(){
   if(!state.announced){state.announced=new Set(mine.map(n=>n.id));return;}
   const fresh=mine.filter(n=>!n.read&&!state.announced.has(n.id));
   mine.forEach(n=>state.announced.add(n.id));
-  if(fresh.length&&SHOW_NOTIFICATION_TOASTS&&bellEnabled())
-    toast(state.session.role==='admin'?'New order received':`${fresh[0].title}: ${fresh[0].message}`);
+  if(fresh.length&&bellEnabled()){
+    if(SHOW_NOTIFICATION_TOASTS)toast(state.session.role==='admin'?'New order received':`${fresh[0].title}: ${fresh[0].message}`);
+    playChime();
+  }
 }
 
 /* =====================================================================
@@ -1187,12 +1266,12 @@ const cloudStore={
 function startSession(role,acct,extra){
   state.session=Object.assign({role,uid:acct.uid||acct.username,username:acct.username||'',name:acct.name||'Admin'},extra||{});
   if(MODE==='local')wr('sessionStorage',SESSION_KEY,JSON.stringify(state.session));
-  state.view=role==='admin'?'dashboard':'shop';state.cart={};state.loginMsg='';state.loginUser='';state.bellOpen=false;
+  state.view=role==='admin'?'dashboard':'shop';state.cart={};state.loginMsg='';state.loginUser='';state.bellOpen=false;state.menuOpen=false;
   if(MODE==='local'){state.announced=null;announceNew();}   // remember what is already there so old notifications don't pop up
   render();window.scrollTo(0,0);
 }
 async function logout(){
-  state.cart={};state.loginMsg='';state.bellOpen=false;closeModal();
+  state.cart={};state.loginMsg='';state.bellOpen=false;state.menuOpen=false;closeModal();
   if(MODE==='cloud'){
     unsubscribeUserData();state.session=null;render();
     try{await cloud.m.signOut(cloud.auth);}catch(e){}
@@ -1250,17 +1329,43 @@ function renderShell(){
   const tabs=admin
     ?[['dashboard','Dashboard','home'],['orders','Orders','clipboard'],['inventory','Inventory','box'],['customers','Customers','users'],['reports','Reports','chart'],['settings','Settings','cog']]
     :[['shop','Shop','cart'],['myorders','My orders','clipboard'],['account','Account','user']];
-  $('#app').innerHTML=`<div id="shell">
-    ${state.noStorage?'<div class="banner">Saving is turned off in this browser, so changes will be lost when you close the page.</div>':''}
+  const banners=`${state.noStorage?'<div class="banner">Saving is turned off in this browser, so changes will be lost when you close the page.</div>':''}
     ${USE_FIREBASE&&MODE==='local'?'<div class="banner">Cloud database not reachable. Running in local mode: data stays on this device only.</div>':''}
-    ${admin&&state.session.defaultPw?'<div class="banner">You are using the default admin password. <button type="button" class="linkbtn" data-act="nav" data-v="settings">Change it in Settings</button>.</div>':''}
+    ${admin&&state.session.defaultPw?'<div class="banner">You are using the default admin password. <button type="button" class="linkbtn" data-act="nav" data-v="settings">Change it in Settings</button>.</div>':''}`;
+  const footer=`<footer class="foot">© ${new Date().getFullYear()} ${esc(APP_NAME)}. All rights reserved.</footer>`;
+  const link=t=>`<button type="button" class="tab" data-act="nav" data-v="${t[0]}" ${state.view===t[0]?'aria-current="page"':''}>${icon(t[2])}<span>${t[1]}</span></button>`;
+  if(admin){
+    // Admin layout: sidebar on the left, slim top bar with the notification bell, content on the right.
+    const cur=tabs.find(t=>t[0]===state.view);
+    $('#app').innerHTML=`<div id="shell" class="admin-shell ${state.menuOpen?'menu-open':''}">
+      <aside class="sidebar" id="sidebar" aria-label="Sidebar">
+        <div class="sb-brand"><span class="mark" aria-hidden="true">S</span><div class="sb-name">${esc(APP_NAME)}<span class="pill">Admin</span></div></div>
+        <nav aria-label="Main">${tabs.map(link).join('')}</nav>
+        <div class="sb-foot"><div class="sb-user"><span class="avatar" aria-hidden="true">${esc((state.session.name||'A').trim().charAt(0).toUpperCase())}</span><span class="sb-uname">${esc(state.session.name)}</span></div>
+          <button type="button" class="btn sm" data-act="logout">${icon('logout')}Log out</button></div>
+      </aside>
+      <div class="sb-scrim" data-act="closeMenu"></div>
+      <div class="main-col">
+        ${banners}
+        <header class="topbar">
+          <button type="button" class="menu-btn" data-act="toggleMenu" aria-label="Open menu" aria-expanded="${state.menuOpen}" aria-controls="sidebar">${icon('menu')}</button>
+          <div class="crumb"><span>Admin</span><span aria-hidden="true">/</span><b>${cur?cur[1]:''}</b></div>
+          <div class="who">${bellHTML()}</div>
+        </header>
+        <main id="view" class="wrap"></main>
+        ${footer}
+      </div></div>`;
+  }else{
+    $('#app').innerHTML=`<div id="shell">
+    ${banners}
     <header class="top">
-      <div class="brand"><span class="mark" aria-hidden="true">S</span>${esc(APP_NAME)}<span class="pill">${admin?'Admin':'Customer'}</span></div>
-      <nav aria-label="Main">${tabs.map(t=>`<button type="button" class="tab" data-act="nav" data-v="${t[0]}" ${state.view===t[0]?'aria-current="page"':''}>${icon(t[2])}<span>${t[1]}</span></button>`).join('')}</nav>
+      <div class="brand"><span class="mark" aria-hidden="true">S</span>${esc(APP_NAME)}<span class="pill">Customer</span></div>
+      <nav aria-label="Main">${tabs.map(link).join('')}</nav>
       <div class="who">${bellHTML()}<span class="who-name">${esc(state.session.name)}</span><button type="button" class="btn sm" data-act="logout">${icon('logout')}Log out</button></div>
     </header>
     <main id="view" class="wrap"></main>
-    <footer class="foot">© ${new Date().getFullYear()} ${esc(APP_NAME)}. All rights reserved.</footer></div>`;
+    ${footer}</div>`;
+  }
   renderView();updateTitle();
 }
 function renderView(){const v=$('#view');if(v&&views[state.view])v.innerHTML=views[state.view]();}
@@ -1341,13 +1446,13 @@ function inventoryTableHTML(){
   if(!db.products.length)return '<div class="card empty">No products yet. Add your first product.</div>';
   if(!list.length)return '<div class="card empty">No products match your search or filter.</div>';
   const tot=v=>v==null?'–':qf(v);
-  return `<div class="table-wrap"><table class="stack"><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>In stock</th><th>Status</th><th class="r">Stock in</th><th class="r">Stock out</th><th>Low-stock alert</th><th></th></tr></thead><tbody>
-  ${list.map(p=>`<tr><td data-label="Product"><b>${esc(p.name)}</b></td><td data-label="Category">${CAT[p.cat]||''}</td><td data-label="Price">${money(p.price)}/${esc(p.unit)}</td>
+  return `<div class="table-wrap"><table class="stack"><thead><tr><th>Product</th><th>Price</th><th>In stock</th><th>Status</th><th>Stock in / out</th><th>Low-stock alert</th><th></th></tr></thead><tbody>
+  ${list.map(p=>`<tr><td data-label="Product"><span class="cv"><b>${esc(p.name)}</b><span class="muted sm blk">${CAT[p.cat]||''}</span></span></td><td data-label="Price">${money(p.price)}/${esc(p.unit)}</td>
   <td data-label="In stock"><span class="cv"><b>${qf(p.stock)}</b> ${esc(p.unit)}</span></td><td data-label="Status">${stockBadge(p)}</td>
-  <td class="r" data-label="Stock in">${tot(p.totalIn)} ${p.totalIn==null?'':esc(p.unit)}</td><td class="r" data-label="Stock out">${tot(p.totalOut)} ${p.totalOut==null?'':esc(p.unit)}</td>
+  <td data-label="Stock in / out"><span class="nw">${tot(p.totalIn)} in / ${tot(p.totalOut)} out${p.totalIn==null?'':' '+esc(p.unit)}</span></td>
   <td data-label="Low-stock alert">${qf(p.low)} ${esc(p.unit)}</td>
   <td class="full"><div class="acts"><button type="button" class="btn sm primary" data-act="openStock" data-id="${esc(p.id)}">Add stock</button><button type="button" class="btn sm" data-act="editProduct" data-id="${esc(p.id)}">Edit</button><button type="button" class="btn sm danger" data-act="deleteProduct" data-id="${esc(p.id)}">Delete</button></div></td></tr>`).join('')}</tbody></table></div>
-  <p class="hint">Stock in and stock out count every logged change: deliveries, removals, corrections, orders and cancellations.</p>`;
+  <p class="hint">Stock in and out count every logged change: deliveries, removals, corrections, orders and cancellations.</p>`;
 }
 function historyTableHTML(){
   const rows=db.stockLog.filter(l=>state.histProduct==='all'||l.productId===state.histProduct);
@@ -1508,7 +1613,7 @@ function viewSettings(){
     <button class="btn primary">Change password</button>
   </form>
   <section class="card"><h2>Notifications</h2>
-    <p class="muted" style="margin:0">Admin dashboard notifications are <b>${ENABLE_ADMIN_DASHBOARD_NOTIFICATIONS?'on':'off'}</b>. Customer notifications are <b>${ENABLE_CUSTOMER_NOTIFICATIONS?'on':'off'}</b> (order received${NOTIFY_CUSTOMER_ON_STATUSES.length?', and when an order becomes: '+NOTIFY_CUSTOMER_ON_STATUSES.map(k=>STATUS[k]||k).join(', '):''}). To change these, edit the notification settings at the top of the script. Email alerts are not available in this version.</p></section>
+    <p class="muted" style="margin:0">Admin dashboard notifications are <b>${ENABLE_ADMIN_DASHBOARD_NOTIFICATIONS?'on':'off'}</b>. Customer notifications are <b>${ENABLE_CUSTOMER_NOTIFICATIONS?'on':'off'}</b> (order received${NOTIFY_CUSTOMER_ON_STATUSES.length?', and when an order becomes: '+NOTIFY_CUSTOMER_ON_STATUSES.map(k=>STATUS[k]||k).join(', '):''}). A short chime plays when a notification arrives; use "Sound" in the bell panel to switch it off for yourself. To change the other options, edit the notification settings at the top of the script. Email alerts are not available in this version.</p></section>
   <section class="card"><h2>System problems</h2>
     ${errs.length?`<ul class="plain">${errs.map(e=>`<li class="row"><div class="grow"><b>${esc(e.area)}</b> <span class="muted sm">${esc(fdate(e.date))}</span><div class="sm">${esc(e.message)}${e.extra?' ('+esc(e.extra)+')':''}</div></div></li>`).join('')}</ul><button type="button" class="btn sm" data-act="clearErrors" style="margin-top:10px">Clear list</button>`:'<div class="empty sm">No problems recorded.</div>'}
   </section>
@@ -1662,8 +1767,18 @@ const actions={
     <div class="modal-actions"><button type="button" class="btn primary" data-act="closeModal">OK</button></div>`,'sm','Forgot password');
   },
   logout(){logout();},
-  nav(el){state.view=el.dataset.v;state.bellOpen=false;renderShell();window.scrollTo(0,0);},
+  nav(el){state.view=el.dataset.v;state.bellOpen=false;state.menuOpen=false;renderShell();window.scrollTo(0,0);},
   toggleBell(){state.bellOpen=!state.bellOpen;refreshBell();},
+  toggleSound(){
+    const on=!soundOn();wr('localStorage','sibs-trading:sound',on?'1':'0');
+    refreshBell();if(on)playChime(true);   // play a sample so they hear what it sounds like
+  },
+  toggleMenu(){
+    state.menuOpen=!state.menuOpen;
+    const sh=$('#shell');if(sh)sh.classList.toggle('menu-open',state.menuOpen);
+    const bt=$('.menu-btn');if(bt)bt.setAttribute('aria-expanded',String(state.menuOpen));
+  },
+  closeMenu(){state.menuOpen=false;const sh=$('#shell');if(sh)sh.classList.remove('menu-open');const bt=$('.menu-btn');if(bt)bt.setAttribute('aria-expanded','false');},
   async readAll(){await store.markNotifs(null);refreshBell();},
   async openNotif(el){
     const n=db.notifications.find(x=>x.id===el.dataset.id);if(!n)return;
@@ -1993,6 +2108,7 @@ document.addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
   if($('#modal-root .backdrop'))closeModal();
   else if(state.bellOpen){state.bellOpen=false;refreshBell();}
+  else if(state.menuOpen)actions.closeMenu();
 });
 window.addEventListener('unhandledrejection',e=>{handleFail(e.reason);e.preventDefault();});
 
