@@ -358,6 +358,21 @@ code{font-family:ui-monospace,'Courier New',monospace;font-size:.9em;background:
 .brand.brand-btn{font-family:var(--f-display);font-weight:800;font-size:21px;letter-spacing:-.01em}
 .sb-brand.brand-btn{width:100%;padding:4px 8px 18px;border-radius:0}
 
+/* ===== Tab change: loading animation ===== */
+.nav-progress{position:fixed;left:0;top:0;height:3px;width:100%;z-index:90;background:var(--saffron);transform-origin:left;animation:navprog 600ms ease-out forwards}
+@keyframes navprog{from{transform:scaleX(.04)}to{transform:scaleX(.92)}}
+.page-loading{display:grid;gap:16px}
+.sk{border-radius:12px;background:linear-gradient(90deg,var(--line) 25%,var(--paper) 37%,var(--line) 63%);background-size:400% 100%;animation:shimmer 1.3s ease infinite}
+@keyframes shimmer{from{background-position:100% 50%}to{background-position:0 50%}}
+.sk.h1{height:40px;width:min(340px,62%)}
+.sk-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.tile-sk{height:86px}
+.block-sk{height:150px}
+.block-sk.short{height:90px;width:66%}
+.view-in{animation:viewin .3s ease-out}
+@keyframes viewin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.sk,.nav-progress,.view-in{animation:none}}
+
 @media print{
   :root{padding:0}
   body{background:#fff}
@@ -392,6 +407,7 @@ const ORDER_NUMBER_OFFSET=10000;          // The first new order is OFFSET + 1.
 const LOW_STOCK_DEFAULT=5;                // Pre-filled "Low-stock alert" when adding a product.
 const MAX_QTY_PER_ITEM=500;               // Largest quantity one customer can order of a single product.
 const MIN_PASSWORD_LENGTH=6;              // Firebase itself also requires at least 6.
+const PAGE_TRANSITION_MS=600;             // How long the loading animation shows when you change tabs (milliseconds). 0 = switch instantly.
 const MAX_TRIES=3;                        // Wrong log in tries before log in is paused...
 const LOCK_MS=60000;                      // ...and how long the pause lasts (60000 = 1 minute).
 
@@ -546,7 +562,7 @@ const cloud={m:null,auth:null,db:null,userSubs:[],pubSubs:[],warned:{},firstAuth
 const state={session:null,view:'',loginMode:'login',loginMsg:'',loginUser:'',shopQ:'',shopCat:'all',cart:{},
   invTab:'products',invQ:'',invSort:'name',invFilter:'all',histProduct:'all',orderFilter:'all',orderQ:'',
   reportRange:'7',bellOpen:false,noStorage:false,busy:false,ordering:false,registering:false,
-  cloudFailed:false,announced:null,notifsLoaded:false,menuOpen:false};
+  cloudFailed:false,announced:null,notifsLoaded:false,menuOpen:false,loading:false,navToken:0};
 let lockTimer=null,lastFocus=null,confirmCb=null,warnedSave=false;
 
 const SAMPLE_PRODUCTS=[
@@ -1273,12 +1289,12 @@ const cloudStore={
 function startSession(role,acct,extra){
   state.session=Object.assign({role,uid:acct.uid||acct.username,username:acct.username||'',name:acct.name||'Admin'},extra||{});
   if(MODE==='local')wr('sessionStorage',SESSION_KEY,JSON.stringify(state.session));
-  state.view=role==='admin'?'dashboard':'shop';state.cart={};state.loginMsg='';state.loginUser='';state.bellOpen=false;state.menuOpen=false;
+  state.view=role==='admin'?'dashboard':'shop';state.cart={};state.loginMsg='';state.loginUser='';state.bellOpen=false;state.menuOpen=false;state.loading=false;state.navToken++;state.loginMode='login';
   if(MODE==='local'){state.announced=null;announceNew();}   // remember what is already there so old notifications don't pop up
   render();window.scrollTo(0,0);
 }
 async function logout(){
-  state.cart={};state.loginMsg='';state.bellOpen=false;state.menuOpen=false;closeModal();
+  state.cart={};state.loginMsg='';state.bellOpen=false;state.menuOpen=false;state.loading=false;state.navToken++;state.loginMode='login';closeModal();
   if(MODE==='cloud'){
     unsubscribeUserData();state.session=null;render();
     try{await cloud.m.signOut(cloud.auth);}catch(e){}
@@ -1373,9 +1389,33 @@ function renderShell(){
     <main id="view" class="wrap"></main>
     ${footer}</div>`;
   }
-  renderView();updateTitle();
+  if(state.loading){const v=$('#view');if(v)v.innerHTML=loaderHTML();}else renderView();
+  updateTitle();
 }
-function renderView(){const v=$('#view');if(v&&views[state.view])v.innerHTML=views[state.view]();}
+// Placeholder shapes shown while changing tabs.
+function loaderHTML(){
+  return `<div class="nav-progress" aria-hidden="true" style="animation-duration:${PAGE_DELAY()}ms"></div>
+  <div class="page-loading" role="status" aria-live="polite"><span class="sr">Loading</span>
+    <div class="sk h1"></div>
+    <div class="sk-tiles"><div class="sk tile-sk"></div><div class="sk tile-sk"></div><div class="sk tile-sk"></div><div class="sk tile-sk"></div></div>
+    <div class="sk block-sk"></div><div class="sk block-sk short"></div></div>`;
+}
+const PAGE_DELAY=()=>typeof window.SIBS_PAGE_TRANSITION_MS==='number'?window.SIBS_PAGE_TRANSITION_MS:PAGE_TRANSITION_MS;   // (the window setting is only a test hook)
+// Changes tab with a short loading animation. The menu highlight and page name update at once; the page fades in after the delay.
+function goTo(view){
+  state.view=view;state.bellOpen=false;state.menuOpen=false;
+  window.scrollTo(0,0);
+  const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches;
+  if(!PAGE_DELAY()||reduce){state.loading=false;state.navToken++;renderShell();return;}
+  state.loading=true;const token=++state.navToken;
+  renderShell();
+  setTimeout(()=>{
+    if(token!==state.navToken||!state.session)return;   // a newer click (or log out) replaced this one
+    state.loading=false;renderView();
+    const v=$('#view');if(v){v.classList.remove('view-in');void v.offsetWidth;v.classList.add('view-in');}
+  },PAGE_DELAY());
+}
+function renderView(){if(state.loading)return;const v=$('#view');if(v&&views[state.view])v.innerHTML=views[state.view]();}
 function render(){
   clearInterval(lockTimer);
   if(!state.session)renderLogin();else renderShell();
@@ -1774,16 +1814,14 @@ const actions={
     <div class="modal-actions"><button type="button" class="btn primary" data-act="closeModal">OK</button></div>`,'sm','Forgot password');
   },
   logout(){logout();},
-  nav(el){state.view=el.dataset.v;state.bellOpen=false;state.menuOpen=false;renderShell();window.scrollTo(0,0);},
+  nav(el){goTo(el.dataset.v);},
   // Logo click: go to the home page (Shop for customers, Dashboard for admin) with fresh data and cleared search/filters.
   home(){
     if(!state.session)return;
     closeModal();
     syncFromStorage();   // local mode: pick up the latest saved data (cloud mode is already live)
-    state.view=state.session.role==='admin'?'dashboard':'shop';
     state.shopQ='';state.shopCat='all';state.invQ='';state.invFilter='all';state.invSort='name';state.invTab='products';state.orderQ='';state.orderFilter='all';
-    state.bellOpen=false;state.menuOpen=false;
-    renderShell();window.scrollTo(0,0);
+    goTo(state.session.role==='admin'?'dashboard':'shop');
   },
   toggleBell(){state.bellOpen=!state.bellOpen;refreshBell();},
   toggleSound(){
