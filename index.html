@@ -472,9 +472,10 @@ const FIREBASE_CONFIG={
 const ENABLE_ADMIN_DASHBOARD_NOTIFICATIONS=true;  // Bell + list for new orders (admin).
 const ENABLE_CUSTOMER_NOTIFICATIONS=true;         // Bell + list for order updates (customer).
 const NOTIFY_CUSTOMER_ORDER_RECEIVED=true;        // Customer is told right away that their order was received.
-// Customer is notified when the admin moves the order to one of these statuses.
+// The customer is notified at every step: "received" (NOTIFY_CUSTOMER_ORDER_RECEIVED above), then each time the
+// admin moves the order to one of these statuses. Remove a status from the list if you do not want that step announced.
 // Choose from: 'confirmed', 'processing', 'ready', 'completed', 'cancelled'.
-const NOTIFY_CUSTOMER_ON_STATUSES=['ready'];
+const NOTIFY_CUSTOMER_ON_STATUSES=['confirmed','processing','ready','completed','cancelled'];
 const SHOW_NOTIFICATION_TOASTS=true;              // Pop-up message when a new notification arrives while the app is open.
 const NOTIFICATION_SOUND=true;                    // Play a short chime when a notification arrives. Each person can also switch it off in the bell panel.
 // Note: browsers only allow sound after the person has clicked or tapped the page at least once (for example the log in click).
@@ -776,7 +777,7 @@ const phoneField=(id,kind,value,optional,placeholder)=>`<input id="${id}" name="
    * Admin gets one when a customer places an order.
    * Customer gets "Order received" when they place an order, and another
      when the admin moves the order to a status listed in
-     NOTIFY_CUSTOMER_ON_STATUSES (by default: Ready).
+     NOTIFY_CUSTOMER_ON_STATUSES (by default: every step, so they can follow the order).
    A notification is created AFTER the order is saved and in its own error
    handler, so a notification problem can never cancel an order.
    Cloud mode: notifications arrive live from Firebase.
@@ -2317,7 +2318,8 @@ const forms={
     }
     state.ordering=false;
     state.cart={};closeModal();renderView();
-    if(state.announced)myNotifs().forEach(n=>state.announced.add(n.id));   // their own "Order received" needs no pop-up
+    if(state.announced)myNotifs().forEach(n=>state.announced.add(n.id));   // their own "Order received" needs no pop-up (the receipt is shown), but it does get the chime
+    if(ENABLE_CUSTOMER_NOTIFICATIONS&&NOTIFY_CUSTOMER_ORDER_RECEIVED)playChime();
     refreshBell();openReceipt(order,true);
   }
 };
