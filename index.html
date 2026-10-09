@@ -401,6 +401,11 @@ code{font-family:ui-monospace,'Courier New',monospace;font-size:.9em;background:
 .pv-frame.phone .grid{grid-template-columns:1fr}   /* a phone shows one column, like the real shop */
 @media(max-width:700px){.pv-shop{grid-template-columns:1fr}.pv-seg{min-width:0;width:100%}}
 
+/* field errors */
+.hint.err{color:var(--bad);font-weight:600;min-height:0}
+.hint.err:empty{display:none}
+input[aria-invalid="true"]{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad)}
+
 @media print{
   :root{padding:0}
   body{background:#fff}
@@ -434,6 +439,7 @@ const ORDER_PREFIX='ORD';                 // Receipt numbers look like ORD-10001
 const ORDER_NUMBER_OFFSET=10000;          // The first new order is OFFSET + 1.
 const LOW_STOCK_DEFAULT=5;                // Pre-filled "Low-stock alert" when adding a product.
 const MAX_QTY_PER_ITEM=500;               // Largest quantity one customer can order of a single product.
+const PHONE_REGION='PH';                  // Which phone numbers are accepted: 'PH' = Philippine mobile numbers (09XXXXXXXXX or +639XXXXXXXXX); 'ANY' = any international number (+ and 8 to 15 digits). If you change this, also change the phone rules in database.rules.json (see FIREBASE_SETUP.md).
 const MIN_PASSWORD_LENGTH=6;              // Firebase itself also requires at least 6.
 const SESSION_IDLE_MINUTES=720;           // Log out automatically after this many minutes with no click or key press in any open tab (720 = 12 hours). 0 = never.
 const PAGE_TRANSITION_MS=600;             // How long the loading animation shows when you change tabs (milliseconds). 0 = switch instantly.
@@ -715,6 +721,54 @@ const qtyOk=(p,q)=>q>0&&q<=MAX_QTY_PER_ITEM&&(p.unit==='kg'||Number.isInteger(q)
 const qtyHint=p=>p.unit==='kg'?'Enter a quantity above zero.':`Enter a whole number of ${p.unit}.`;
 
 /* =====================================================================
+   PHONE NUMBERS  (IMPORTANT)
+   ---------------------------------------------------------------------
+   * Fields only accept digits (and a "+" at the very start).
+   * A customer's contact number must be a valid mobile number for PHONE_REGION.
+   * Obviously fake numbers are refused (11111111, 12345678, ...).
+   * The number is stored in one standard form (for example 09171234567).
+   NOTE: this checks the FORMAT. It cannot know whether the number is really in service;
+   that needs a verification code sent by SMS, which needs a server.
+   ===================================================================== */
+// Keeps only digits, and a single "+" if it is the first character.
+function cleanPhoneInput(v){return String(v==null?'':v).replace(/[^\d+]/g,'').replace(/(?!^)\+/g,'').slice(0,16);}
+// True for numbers made of obvious patterns: the same digit 6+ times in a row, or a run of 7+ counting up or down.
+function looksFake(d){
+  if(/(\d)\1{5,}/.test(d))return true;
+  const up='01234567890123456789',down='98765432109876543210';
+  for(let i=0;i+7<=d.length;i++){const seg=d.slice(i,i+7);if(up.includes(seg)||down.includes(seg))return true;}
+  return false;
+}
+// kind: 'mobile' = a customer's contact number (required format). 'business' = the shop's number (mobile or landline).
+// Returns {ok:true,value:'09171234567'} or {ok:false,msg:'...'}.
+function validatePhone(raw,kind){
+  const v=cleanPhoneInput(raw);
+  if(!v)return {ok:false,msg:'Enter a contact number.'};
+  if(PHONE_REGION==='PH'){
+    let n=v;
+    if(/^\+639\d{9}$/.test(n))n='0'+n.slice(3);else if(/^639\d{9}$/.test(n))n='0'+n.slice(2);
+    if(kind==='business'){
+      if(/^\+63\d{8,10}$/.test(n))n='0'+n.slice(3);else if(/^63\d{8,10}$/.test(n))n='0'+n.slice(2);
+      if(!/^0\d{8,10}$/.test(n))return {ok:false,msg:'Enter a valid phone number: digits only, starting with 0 (or +63).'};
+    }else if(!/^09\d{9}$/.test(n))return {ok:false,msg:'Enter a valid mobile number: 11 digits starting with 09 (or +63 9...). Example format: 09XX XXX XXXX.'};
+    if(looksFake(n))return {ok:false,msg:'That number does not look real. Please enter your actual number.'};
+    return {ok:true,value:n};
+  }
+  if(!/^\+?\d{8,15}$/.test(v))return {ok:false,msg:'Enter a valid phone number: digits only (8 to 15), with + and the country code if from abroad.'};
+  if(looksFake(v.replace('+','')))return {ok:false,msg:'That number does not look real. Please enter your actual number.'};
+  return {ok:true,value:v};
+}
+// Shows 09171234567 as 0917 123 4567 (only for display).
+function fmtPhone(n){n=String(n==null?'':n);return /^09\d{9}$/.test(n)?`${n.slice(0,4)} ${n.slice(4,7)} ${n.slice(7)}`:n;}
+// Marks a field as wrong (red border) and shows the message under it.
+function setFieldError(el,msg){
+  if(!el)return;
+  el.setAttribute('aria-invalid',msg?'true':'false');
+  const e=document.getElementById(el.id+'Err');if(e)e.textContent=msg||'';
+}
+const phoneField=(id,kind,value,optional,placeholder)=>`<input id="${id}" name="phone" type="tel" inputmode="numeric" autocomplete="tel" maxlength="16" placeholder="${placeholder}" value="${esc(value||'')}" data-input="phone" data-change="phoneCheck" data-kind="${kind}" ${optional?'data-optional="1"':''} aria-describedby="${id}Err"><div class="hint err" id="${id}Err" role="alert"></div>`;
+
+/* =====================================================================
    NOTIFICATIONS  (admin and customer)
    ---------------------------------------------------------------------
    A notification is a small record: { audience:'admin'|'user', to, type,
@@ -872,12 +926,12 @@ function receiptHTML(o){
   return `<div class="receipt" id="receiptPaper">
   <h2>${esc(APP_NAME)}</h2>
   <div class="c">Raw chicken &amp; by-products</div>
-  ${s.address?`<div class="c">${esc(s.address)}</div>`:''}${s.phone?`<div class="c">${esc(s.phone)}</div>`:''}
+  ${s.address?`<div class="c">${esc(s.address)}</div>`:''}${s.phone?`<div class="c">${esc(fmtPhone(s.phone))}</div>`:''}
   <hr>
   <div class="kv"><span>Receipt no.</span><b>${esc(o.no)}</b></div>
   <div class="kv"><span>Date</span><span>${esc(fdate(o.date))}</span></div>
   <div class="kv"><span>Customer</span><span>${esc(c.name)}</span></div>
-  <div class="kv"><span>Phone</span><span>${esc(c.phone)}</span></div>
+  <div class="kv"><span>Phone</span><span>${esc(fmtPhone(c.phone))}</span></div>
   <div class="kv"><span>${c.type==='delivery'?'Delivery to':'Pickup'}</span><span>${c.type==='delivery'?esc(c.address):'At store'}</span></div>
   <hr>
   <table><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Amount</th></tr></thead><tbody>${rows}</tbody></table>
@@ -1089,6 +1143,7 @@ let store=null;
 /* ---------- LOCAL STORE (data kept in this browser) ---------- */
 const localStore={
   async placeOrder(inp){
+    const ph=validatePhone(inp.phone,'mobile');if(!ph.ok)throw userErr(ph.msg);inp=Object.assign({},inp,{phone:ph.value});
     syncFromStorage();
     const u=currentUser();
     if(!u)throw userErr('Your account could not be found. Please log in again.');
@@ -1179,6 +1234,7 @@ const localStore={
 /* ---------- CLOUD STORE (shared Firebase Realtime Database) ---------- */
 const cloudStore={
   async placeOrder(inp){
+    const ph=validatePhone(inp.phone,'mobile');if(!ph.ok)throw userErr(ph.msg);inp=Object.assign({},inp,{phone:ph.value});
     const m=cloud.m,s=state.session;
     const lines=cartLines();
     if(!lines.length)throw userErr('Your basket is empty.');
@@ -1517,7 +1573,7 @@ function openOrderDetail(o){
     ${stepper}${statusCtl}
     <div class="sumlist">${o.items.map(i=>`<div class="row"><span>${esc(i.name)} – ${qf(i.qty)} ${esc(i.unit)} at ${money(i.price,o.currency)}/${esc(i.unit)}</span><b>${money(i.price*i.qty,o.currency)}</b></div>`).join('')}
       <div class="row"><b>Total</b><b>${money(o.total,o.currency)}</b></div></div>
-    <dl class="kvl"><dt>Customer</dt><dd>${esc(c.name)}</dd><dt>Phone</dt><dd>${esc(c.phone)}</dd>
+    <dl class="kvl"><dt>Customer</dt><dd>${esc(c.name)}</dd><dt>Phone</dt><dd>${esc(fmtPhone(c.phone))}</dd>
       <dt>${c.type==='delivery'?'Delivery to':'Pickup'}</dt><dd>${c.type==='delivery'?esc(c.address):'At store'}</dd>
       <dt>Payment</dt><dd>${esc(o.payment)}</dd>${c.note?`<dt>Note</dt><dd>${esc(c.note)}</dd>`:''}</dl>
     <div class="modal-actions"><button type="button" class="btn" data-act="viewReceipt" data-id="${esc(o.id)}">${icon('print')}Receipt</button><button type="button" class="btn primary" data-act="closeModal">Close</button></div></div>`,'od-modal','Order '+o.no);
@@ -1657,7 +1713,7 @@ function ordersListHTML(){
   ${list.map(o=>{
     const names=o.items.slice(0,2).map(i=>esc(i.name)).join(', ')+(o.items.length>2?` +${o.items.length-2} more`:'');
     return `<tr><td data-label="Order"><b>${esc(o.no)}</b></td><td data-label="Date">${esc(fdate(o.date))}</td>
-    <td data-label="Customer"><span class="cv">${esc(o.customer.name)}<span class="muted sm blk">${esc(o.customer.phone)} – ${o.customer.type==='delivery'?'Delivery':'Pickup'}</span></span></td>
+    <td data-label="Customer"><span class="cv">${esc(o.customer.name)}<span class="muted sm blk">${esc(fmtPhone(o.customer.phone))} – ${o.customer.type==='delivery'?'Delivery':'Pickup'}</span></span></td>
     <td data-label="Products"><span class="cv">${names}<span class="muted sm blk">${o.items.length} item${o.items.length===1?'':'s'}</span></span></td>
     <td class="r" data-label="Total"><b>${money(o.total,o.currency)}</b></td>
     <td data-label="Status"><label class="sr" for="st-${esc(o.id)}">Status of ${esc(o.no)}</label><select id="st-${esc(o.id)}" data-change="orderStatus" data-id="${esc(o.id)}" ${o.status==='cancelled'?'disabled':''} style="min-width:130px">${Object.keys(STATUS).map(k=>`<option value="${k}" ${o.status===k?'selected':''}>${STATUS[k]}</option>`).join('')}</select></td>
@@ -1679,7 +1735,7 @@ function viewCustomers(){
     const acts=cl
       ?`<button type="button" class="btn sm" data-act="sendReset" data-key="${esc(key)}">Send reset email</button>${u.disabled?`<button type="button" class="btn sm" data-act="reactivateUser" data-key="${esc(key)}">Reactivate</button>`:`<button type="button" class="btn sm danger" data-act="removeUser" data-key="${esc(key)}">Deactivate</button>`}`
       :`<button type="button" class="btn sm" data-act="resetPw" data-key="${esc(key)}">Reset password</button><button type="button" class="btn sm danger" data-act="removeUser" data-key="${esc(key)}">Remove</button>`;
-    return `<tr><td data-label="Name"><b>${esc(u.name)}</b>${u.disabled?' <span class="badge bad">Deactivated</span>':''}</td><td data-label="${cl?'Email':'Username'}">${esc(cl?u.email:u.username)}</td><td data-label="Phone">${esc(u.phone||'–')}</td><td data-label="Joined">${u.created?esc(new Date(u.created).toLocaleDateString()):''}</td><td class="r" data-label="Orders">${n}</td>
+    return `<tr><td data-label="Name"><b>${esc(u.name)}</b>${u.disabled?' <span class="badge bad">Deactivated</span>':''}</td><td data-label="${cl?'Email':'Username'}">${esc(cl?u.email:u.username)}</td><td data-label="Phone">${esc(u.phone?fmtPhone(u.phone):'–')}</td><td data-label="Joined">${u.created?esc(new Date(u.created).toLocaleDateString()):''}</td><td class="r" data-label="Orders">${n}</td>
     <td class="full"><div class="acts">${acts}</div></td></tr>`;}).join('')}</tbody></table></div>`
   :'<div class="card empty">No customer accounts yet. Customers create their own from the log in page.</div>';
   return `<div class="page-head"><h1>Customers</h1></div>${body}`;
@@ -1723,7 +1779,7 @@ function viewSettings(){
     <h2>Business details</h2><p class="muted">These appear on every receipt.</p>
     <div class="field"><label for="sa">Address</label><input id="sa" name="address" value="${esc(s.address)}" placeholder="Street, city"></div>
     <div class="row2">
-      <div class="field"><label for="sp">Phone</label><input id="sp" name="phone" value="${esc(s.phone)}" placeholder="Contact number"></div>
+      <div class="field"><label for="sp">Phone</label>${phoneField('sp','business',s.phone,true,'Shop contact number (digits only)')}</div>
       <div class="field"><label for="sc">Currency symbol</label><input id="sc" name="currency" maxlength="4" value="${esc(s.currency)}"></div>
     </div>
     <div class="field"><label for="sf">Message at the bottom of receipts</label><input id="sf" name="footer" value="${esc(s.footer)}"></div>
@@ -1833,7 +1889,7 @@ function viewAccount(){
       <div class="field"><label for="au2">${cl?'Email':'Username'}</label><input id="au2" value="${esc(cl?(u.email||state.session.username):u.username)}" readonly aria-describedby="auh"><div class="hint" id="auh">This cannot be changed.</div></div>
     </div>
     <div class="row2">
-      <div class="field"><label for="ap2">Phone number</label><input id="ap2" name="phone" type="tel" autocomplete="tel" value="${esc(u.phone||'')}"></div>
+      <div class="field"><label for="ap2">Phone number</label>${phoneField('ap2','mobile',u.phone,true,'09XX XXX XXXX')}</div>
       <div class="field"><label for="aa">Delivery address</label><input id="aa" name="address" autocomplete="street-address" value="${esc(u.address||'')}"></div>
     </div>
     <button class="btn primary">Save details</button>
@@ -1854,7 +1910,7 @@ function checkoutHTML(){
   <form data-form="checkout" novalidate style="margin-top:12px">
     <div class="sumlist">${lines.map(l=>`<div class="row"><span>${esc(l.p.name)} – ${qf(l.qty)} ${esc(l.p.unit)}</span><b>${money(l.amt)}</b></div>`).join('')}<div class="row"><b>Total</b><b>${money(sum(lines.map(l=>l.amt)))}</b></div></div>
     <div class="field"><label for="cn">Your name</label><input id="cn" name="name" autocomplete="name" value="${esc(state.session.name)}"></div>
-    <div class="field"><label for="cph">Phone number</label><input id="cph" name="phone" type="tel" autocomplete="tel" value="${esc(u.phone||'')}"></div>
+    <div class="field"><label for="cph">Mobile number</label>${phoneField('cph','mobile',u.phone,false,'09XX XXX XXXX')}<div class="hint">Numbers only. We use it to reach you about your order.</div></div>
     <div class="field"><span class="lbl">Get your order by</span><div class="radios">
       <label><input type="radio" name="type" value="pickup" checked data-change="orderType">Pickup</label>
       <label><input type="radio" name="type" value="delivery" data-change="orderType">Delivery</label></div></div>
@@ -2063,6 +2119,13 @@ const changes={
     toast(`${o.no} marked ${STATUS[nv].toLowerCase()}`+(shouldNotifyStatus(nv)?'. The customer was notified.':''));
   },
   orderType(el){const a=$('#addrField');if(a)a.hidden=el.value!=='delivery';},
+  // When the person leaves a phone field: tidy the number and show a message if it is not valid.
+  phoneCheck(el){
+    const v=el.value.trim();
+    if(!v){setFieldError(el,el.dataset.optional?'':'Enter a contact number.');return;}
+    const r=validatePhone(v,el.dataset.kind);
+    setFieldError(el,r.ok?'':r.msg);if(r.ok)el.value=r.value;
+  },
   invFilter(el){state.invFilter=el.value;$('#invBody').innerHTML=inventoryTableHTML();},
   invSort(el){state.invSort=el.value;$('#invBody').innerHTML=inventoryTableHTML();},
   histProduct(el){state.histProduct=el.value;$('#invBody').innerHTML=historyTableHTML();},
@@ -2073,7 +2136,9 @@ const inputs={
   pvQ(el){state.pvQ=el.value;const g=$('#pvGrid');if(g)g.innerHTML=gridHTML(true);},
   invQ(el){state.invQ=el.value;const b=$('#invBody');if(b)b.innerHTML=inventoryTableHTML();},
   orderQ(el){state.orderQ=el.value;const b=$('#ordBody');if(b)b.innerHTML=ordersListHTML();},
-  stockQty(){updateStockPreview();}
+  stockQty(){updateStockPreview();},
+  // Contact numbers: anything that is not a digit (or a leading +) is removed as it is typed or pasted.
+  phone(el){const c=cleanPhoneInput(el.value);if(c!==el.value)el.value=c;if(el.getAttribute('aria-invalid')==='true')setFieldError(el,'');}
 };
 
 /* =====================================================================
@@ -2184,7 +2249,9 @@ const forms={
   async settings(f){
     if(!isAdmin())return;
     const d=fd(f);
-    await store.saveSettings({address:(d.address||'').trim(),phone:(d.phone||'').trim(),currency:(d.currency||'').trim()||DEFAULT_CURRENCY,footer:(d.footer||'').trim()});
+    let bizPhone='';
+    if((d.phone||'').trim()){const ph=validatePhone(d.phone,'business');if(!ph.ok){setFieldError($('#sp'),ph.msg);toast(ph.msg,'bad');return;}bizPhone=ph.value;}
+    await store.saveSettings({address:(d.address||'').trim(),phone:bizPhone,currency:(d.currency||'').trim()||DEFAULT_CURRENCY,footer:(d.footer||'').trim()});
     renderView();toast('Business details saved');
   },
   async adminPass(f){
@@ -2208,7 +2275,9 @@ const forms={
   async profile(f){
     const d=fd(f),name=(d.name||'').trim();
     if(!name){toast('Enter your name','bad');return;}
-    await store.saveProfile({name,phone:(d.phone||'').trim(),address:(d.address||'').trim()});
+    let phone='';
+    if((d.phone||'').trim()){const ph=validatePhone(d.phone,'mobile');if(!ph.ok){setFieldError($('#ap2'),ph.msg);toast(ph.msg,'bad');return;}phone=ph.value;}
+    await store.saveProfile({name,phone,address:(d.address||'').trim()});
     state.session.name=name;saveSession();renderShell();toast('Your details were saved');
   },
   async userPass(f){
@@ -2227,9 +2296,11 @@ const forms={
   async checkout(f){
     if(state.ordering)return;
     const d=fd(f);
-    const name=(d.name||'').trim(),phone=(d.phone||'').trim(),type=d.type==='delivery'?'delivery':'pickup',address=(d.address||'').trim();
+    const name=(d.name||'').trim(),type=d.type==='delivery'?'delivery':'pickup',address=(d.address||'').trim();
     if(!name){toast('Enter your name','bad');return;}
-    if(!phone){toast('Enter a phone number we can reach you on','bad');return;}
+    const ph=validatePhone(d.phone,'mobile');
+    if(!ph.ok){const el=$('#cph');setFieldError(el,ph.msg);if(el)el.focus();toast(ph.msg,'bad');return;}
+    const phone=ph.value;
     if(type==='delivery'&&!address){toast('Enter the delivery address','bad');return;}
     state.ordering=true;
     const btn=$('#placeBtn');if(btn){btn.disabled=true;btn.textContent='Placing order…';}
