@@ -406,6 +406,12 @@ code{font-family:ui-monospace,'Courier New',monospace;font-size:.9em;background:
 .hint.err:empty{display:none}
 input[aria-invalid="true"]{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad)}
 
+/* pop-up messages: compact, dismissible, never a tall stack */
+.toast{pointer-events:auto;cursor:pointer;padding:9px 14px;font-size:15px;line-height:1.35}
+.toast.bump{animation:bump .28s ease-out}
+@keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.toast.bump{animation:none}}
+
 @media print{
   :root{padding:0}
   body{background:#fff}
@@ -476,6 +482,8 @@ const NOTIFY_CUSTOMER_ORDER_RECEIVED=true;        // Customer is told right away
 // admin moves the order to one of these statuses. Remove a status from the list if you do not want that step announced.
 // Choose from: 'confirmed', 'processing', 'ready', 'completed', 'cancelled'.
 const NOTIFY_CUSTOMER_ON_STATUSES=['confirmed','processing','ready','completed','cancelled'];
+const TOAST_MS=3500;                              // How long a pop-up message stays on screen (milliseconds).
+const MAX_TOASTS=3;                               // Most pop-up messages shown at the same time (the oldest goes first).
 const SHOW_NOTIFICATION_TOASTS=true;              // Pop-up message when a new notification arrives while the app is open.
 const NOTIFICATION_SOUND=true;                    // Play a short chime when a notification arrives. Each person can also switch it off in the bell panel.
 // Note: browsers only allow sound after the person has clicked or tapped the page at least once (for example the log in click).
@@ -883,9 +891,21 @@ function announceNew(){
 /* =====================================================================
    TOASTS, MODALS
    ===================================================================== */
+// Pop-up messages. The same message is never shown twice at once (it just stays a little longer),
+// no more than MAX_TOASTS are shown together, and clicking a message closes it.
 function toast(msg,type){
-  const t=document.createElement('div');t.className='toast'+(type?' '+type:'');t.textContent=msg;
-  $('#toasts').appendChild(t);setTimeout(()=>t.remove(),4200);
+  const box=$('#toasts');
+  const same=Array.from(box.children).find(t=>t.textContent===msg);
+  if(same){
+    clearTimeout(same._t);same._t=setTimeout(()=>same.remove(),TOAST_MS);
+    same.classList.remove('bump');void same.offsetWidth;same.classList.add('bump');
+    return;
+  }
+  while(box.children.length>=MAX_TOASTS)box.firstChild.remove();
+  const t=document.createElement('div');t.className='toast'+(type?' '+type:'');t.textContent=msg;t.title='Click to dismiss';
+  t.addEventListener('click',()=>{clearTimeout(t._t);t.remove();});
+  t._t=setTimeout(()=>t.remove(),TOAST_MS);
+  box.appendChild(t);
 }
 function openModal(inner,cls,label){
   lastFocus=document.activeElement;
@@ -1838,7 +1858,7 @@ function gridHTML(preview){   // preview = true: the admin's read-only copy (no 
       <div class="price">${money(p.price)}<small>/${esc(p.unit)}</small></div>
       <div class="avail ${cls}">${txt}</div>
       ${p.stock<=0||preview?'':`<div class="buy"><label class="sr" for="qty-${esc(p.id)}">Quantity in ${esc(p.unit)}</label>
-      <input id="qty-${esc(p.id)}" type="number" min="${step}" step="${step}" inputmode="decimal" value="1" ${dis}><span class="unit">${esc(p.unit)}</span>
+      <input id="qty-${esc(p.id)}" type="number" min="${step}" step="${step}" inputmode="decimal" value="1" ${dis} data-input="clearInvalid"><span class="unit">${esc(p.unit)}</span>
       <button type="button" class="btn primary sm" data-act="addCart" data-id="${esc(p.id)}" ${dis}>Add</button></div>`}</article>`;
   }).join('');
 }
@@ -2019,10 +2039,12 @@ const actions={
   addCart(el){
     const id=el.dataset.id,p=db.products.find(x=>x.id===id);if(!p)return;
     const input=$('#qty-'+id),q=r2(parseFloat(input&&input.value));
-    if(!qtyOk(p,q)){toast(q>MAX_QTY_PER_ITEM?`The most you can order at once is ${MAX_QTY_PER_ITEM} ${p.unit}.`:qtyHint(p),'bad');return;}
+    // A wrong quantity turns the box red and puts the cursor in it; the message appears once.
+    const bad=msg=>{if(input){input.setAttribute('aria-invalid','true');input.focus();input.select();}toast(msg,'bad');};
+    if(!qtyOk(p,q)){bad(q>MAX_QTY_PER_ITEM?`The most you can order at once is ${MAX_QTY_PER_ITEM} ${p.unit}.`:qtyHint(p));return;}
     const inCart=state.cart[id]||0;
-    if(q+inCart>p.stock+1e-9){toast(`Only ${qf(p.stock-inCart)} ${p.unit} of ${p.name} left`,'bad');return;}
-    if(q+inCart>MAX_QTY_PER_ITEM){toast(`The most you can order at once is ${MAX_QTY_PER_ITEM} ${p.unit}.`,'bad');return;}
+    if(q+inCart>p.stock+1e-9){bad(`Only ${qf(p.stock-inCart)} ${p.unit} of ${p.name} left`);return;}
+    if(q+inCart>MAX_QTY_PER_ITEM){bad(`The most you can order at once is ${MAX_QTY_PER_ITEM} ${p.unit}.`);return;}
     state.cart[id]=r2(inCart+q);refreshShop();toast(`${p.name} added to basket`);
   },
   removeCart(el){delete state.cart[el.dataset.id];refreshShop();},
@@ -2138,6 +2160,7 @@ const inputs={
   invQ(el){state.invQ=el.value;const b=$('#invBody');if(b)b.innerHTML=inventoryTableHTML();},
   orderQ(el){state.orderQ=el.value;const b=$('#ordBody');if(b)b.innerHTML=ordersListHTML();},
   stockQty(){updateStockPreview();},
+  clearInvalid(el){el.setAttribute('aria-invalid','false');},   // the red box goes away as soon as the person edits it
   // Contact numbers: anything that is not a digit (or a leading +) is removed as it is typed or pasted.
   phone(el){const c=cleanPhoneInput(el.value);if(c!==el.value)el.value=c;if(el.getAttribute('aria-invalid')==='true')setFieldError(el,'');}
 };
