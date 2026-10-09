@@ -351,6 +351,13 @@ code{font-family:ui-monospace,'Courier New',monospace;font-size:.9em;background:
 
 .nw{white-space:nowrap}
 
+/* logo is a button: click to go home */
+.brand-btn{background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:0;text-align:left;border-radius:10px}
+.brand-btn:hover .mark{filter:brightness(1.08)}
+.brand-btn:focus-visible{outline:3px solid var(--saffron);outline-offset:4px}
+.brand.brand-btn{font-family:var(--f-display);font-weight:800;font-size:21px;letter-spacing:-.01em}
+.sb-brand.brand-btn{width:100%;padding:4px 8px 18px;border-radius:0}
+
 @media print{
   :root{padding:0}
   body{background:#fff}
@@ -1339,7 +1346,7 @@ function renderShell(){
     const cur=tabs.find(t=>t[0]===state.view);
     $('#app').innerHTML=`<div id="shell" class="admin-shell ${state.menuOpen?'menu-open':''}">
       <aside class="sidebar" id="sidebar" aria-label="Sidebar">
-        <div class="sb-brand"><span class="mark" aria-hidden="true">S</span><div class="sb-name">${esc(APP_NAME)}<span class="pill">Admin</span></div></div>
+        <button type="button" class="sb-brand brand-btn" data-act="home" aria-label="${esc(APP_NAME)}: go to the dashboard"><span class="mark" aria-hidden="true">S</span><span class="sb-name">${esc(APP_NAME)}<span class="pill">Admin</span></span></button>
         <nav aria-label="Main">${tabs.map(link).join('')}</nav>
         <div class="sb-foot"><div class="sb-user"><span class="avatar" aria-hidden="true">${esc((state.session.name||'A').trim().charAt(0).toUpperCase())}</span><span class="sb-uname">${esc(state.session.name)}</span></div>
           <button type="button" class="btn sm" data-act="logout">${icon('logout')}Log out</button></div>
@@ -1359,7 +1366,7 @@ function renderShell(){
     $('#app').innerHTML=`<div id="shell">
     ${banners}
     <header class="top">
-      <div class="brand"><span class="mark" aria-hidden="true">S</span>${esc(APP_NAME)}<span class="pill">Customer</span></div>
+      <button type="button" class="brand brand-btn" data-act="home" aria-label="${esc(APP_NAME)}: go to the shop"><span class="mark" aria-hidden="true">S</span>${esc(APP_NAME)}<span class="pill">Customer</span></button>
       <nav aria-label="Main">${tabs.map(link).join('')}</nav>
       <div class="who">${bellHTML()}<span class="who-name">${esc(state.session.name)}</span><button type="button" class="btn sm" data-act="logout">${icon('logout')}Log out</button></div>
     </header>
@@ -1768,6 +1775,16 @@ const actions={
   },
   logout(){logout();},
   nav(el){state.view=el.dataset.v;state.bellOpen=false;state.menuOpen=false;renderShell();window.scrollTo(0,0);},
+  // Logo click: go to the home page (Shop for customers, Dashboard for admin) with fresh data and cleared search/filters.
+  home(){
+    if(!state.session)return;
+    closeModal();
+    syncFromStorage();   // local mode: pick up the latest saved data (cloud mode is already live)
+    state.view=state.session.role==='admin'?'dashboard':'shop';
+    state.shopQ='';state.shopCat='all';state.invQ='';state.invFilter='all';state.invSort='name';state.invTab='products';state.orderQ='';state.orderFilter='all';
+    state.bellOpen=false;state.menuOpen=false;
+    renderShell();window.scrollTo(0,0);
+  },
   toggleBell(){state.bellOpen=!state.bellOpen;refreshBell();},
   toggleSound(){
     const on=!soundOn();wr('localStorage','sibs-trading:sound',on?'1':'0');
