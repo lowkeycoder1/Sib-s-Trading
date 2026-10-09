@@ -742,21 +742,31 @@ function sanitizeNumber(el){
 /* =====================================================================
    PHONE NUMBERS  (IMPORTANT)
    ---------------------------------------------------------------------
-   * Fields only accept digits (and a "+" at the very start).
-   * A customer's contact number must be a valid mobile number for PHONE_REGION.
-   * Obviously fake numbers are refused (11111111, 12345678, ...).
+   * Fields only accept digits, and in the Philippine setting no more than 11 of them.
+   * A customer's contact number must be a valid mobile number for PHONE_REGION (11 digits starting with 09).
+   * Only blatant placeholders are refused (09111111111, 09123456789, ...); real numbers are never judged by their pattern.
    * The number is stored in one standard form (for example 09171234567).
    NOTE: this checks the FORMAT. It cannot know whether the number is really in service;
    that needs a verification code sent by SMS, which needs a server.
    ===================================================================== */
-// Keeps only digits, and a single "+" if it is the first character.
-function cleanPhoneInput(v){return String(v==null?'':v).replace(/[^\d+]/g,'').replace(/(?!^)\+/g,'').slice(0,16);}
-// True for numbers made of obvious patterns: the same digit 6+ times in a row, or a run of 7+ counting up or down.
+// Keeps only digits. Philippine setting: at most 11 digits, no "+" (a pasted "+63 917 ..." becomes "0917 ..."). International setting: a leading + is also allowed, up to 16 characters.
+function cleanPhoneInput(v){
+  v=String(v==null?'':v);
+  if(PHONE_REGION==='PH'){
+    let d=v.replace(/\D/g,'');
+    if(/^639\d{9}$/.test(d))d='0'+d.slice(2);
+    return d.slice(0,11);
+  }
+  return v.replace(/[^\d+]/g,'').replace(/(?!^)\+/g,'').slice(0,16);
+}
+// Only blatant placeholders are refused: the same digit all the way through (09111111111, 09999999999) and the classic
+// 09123456789 / 09876543210. Real numbers can contain repeated or counting digits, so nothing else is treated as fake.
+const PLACEHOLDER_NUMBERS=['09123456789','09876543210'];
 function looksFake(d){
-  if(/(\d)\1{5,}/.test(d))return true;
-  const up='01234567890123456789',down='98765432109876543210';
-  for(let i=0;i+7<=d.length;i++){const seg=d.slice(i,i+7);if(up.includes(seg)||down.includes(seg))return true;}
-  return false;
+  const digits=String(d).replace(/\D/g,'');
+  if(/^(\d)\1+$/.test(digits))return true;
+  if(PHONE_REGION==='PH'&&/^09(\d)\1{8}$/.test(digits))return true;
+  return PLACEHOLDER_NUMBERS.includes(digits);
 }
 // kind: 'mobile' = a customer's contact number (required format). 'business' = the shop's number (mobile or landline).
 // Returns {ok:true,value:'09171234567'} or {ok:false,msg:'...'}.
@@ -764,17 +774,14 @@ function validatePhone(raw,kind){
   const v=cleanPhoneInput(raw);
   if(!v)return {ok:false,msg:'Enter a contact number.'};
   if(PHONE_REGION==='PH'){
-    let n=v;
-    if(/^\+639\d{9}$/.test(n))n='0'+n.slice(3);else if(/^639\d{9}$/.test(n))n='0'+n.slice(2);
     if(kind==='business'){
-      if(/^\+63\d{8,10}$/.test(n))n='0'+n.slice(3);else if(/^63\d{8,10}$/.test(n))n='0'+n.slice(2);
-      if(!/^0\d{8,10}$/.test(n))return {ok:false,msg:'Enter a valid phone number: digits only, starting with 0 (or +63).'};
-    }else if(!/^09\d{9}$/.test(n))return {ok:false,msg:'Enter a valid mobile number: 11 digits starting with 09 (or +63 9...). Example format: 09XX XXX XXXX.'};
-    if(looksFake(n))return {ok:false,msg:'That number does not look real. Please enter your actual number.'};
-    return {ok:true,value:n};
+      if(!/^0\d{8,10}$/.test(v))return {ok:false,msg:'Enter a valid phone number: digits only, starting with 0 (9 to 11 digits).'};
+    }else if(!/^09\d{9}$/.test(v))return {ok:false,msg:'Enter a valid mobile number: exactly 11 digits, starting with 09.'};
+    if(looksFake(v))return {ok:false,msg:'That number does not look right. Please check it and enter your real number.'};
+    return {ok:true,value:v};
   }
   if(!/^\+?\d{8,15}$/.test(v))return {ok:false,msg:'Enter a valid phone number: digits only (8 to 15), with + and the country code if from abroad.'};
-  if(looksFake(v.replace('+','')))return {ok:false,msg:'That number does not look real. Please enter your actual number.'};
+  if(looksFake(v))return {ok:false,msg:'That number does not look right. Please check it and enter your real number.'};
   return {ok:true,value:v};
 }
 // Shows 09171234567 as 0917 123 4567 (only for display).
@@ -785,7 +792,7 @@ function setFieldError(el,msg){
   el.setAttribute('aria-invalid',msg?'true':'false');
   const e=document.getElementById(el.id+'Err');if(e)e.textContent=msg||'';
 }
-const phoneField=(id,kind,value,optional,placeholder)=>`<input id="${id}" name="phone" type="tel" inputmode="numeric" autocomplete="tel" maxlength="16" placeholder="${placeholder}" value="${esc(value||'')}" data-input="phone" data-change="phoneCheck" data-kind="${kind}" ${optional?'data-optional="1"':''} aria-describedby="${id}Err"><div class="hint err" id="${id}Err" role="alert"></div>`;
+const phoneField=(id,kind,value,optional,placeholder)=>`<input id="${id}" name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="${placeholder}" value="${esc(value||'')}" data-input="phone" data-change="phoneCheck" data-kind="${kind}" ${optional?'data-optional="1"':''} aria-describedby="${id}Err"><div class="hint err" id="${id}Err" role="alert"></div>`;
 
 /* =====================================================================
    NOTIFICATIONS  (admin and customer)
@@ -1941,7 +1948,7 @@ function checkoutHTML(){
   <form data-form="checkout" novalidate style="margin-top:12px">
     <div class="sumlist">${lines.map(l=>`<div class="row"><span>${esc(l.p.name)} – ${qf(l.qty)} ${esc(l.p.unit)}</span><b>${money(l.amt)}</b></div>`).join('')}<div class="row"><b>Total</b><b>${money(sum(lines.map(l=>l.amt)))}</b></div></div>
     <div class="field"><label for="cn">Your name</label><input id="cn" name="name" autocomplete="name" value="${esc(state.session.name)}"></div>
-    <div class="field"><label for="cph">Mobile number</label>${phoneField('cph','mobile',u.phone,false,'09XX XXX XXXX')}<div class="hint">Numbers only. We use it to reach you about your order.</div></div>
+    <div class="field"><label for="cph">Mobile number</label>${phoneField('cph','mobile',u.phone,false,'09XX XXX XXXX')}<div class="hint">${PHONE_REGION==='PH'?'Exactly 11 digits, starting with 09. ':'Numbers only. '}We use it to reach you about your order.</div></div>
     <div class="field"><span class="lbl">Get your order by</span><div class="radios">
       <label><input type="radio" name="type" value="pickup" checked data-change="orderType">Pickup</label>
       <label><input type="radio" name="type" value="delivery" data-change="orderType">Delivery</label></div></div>
