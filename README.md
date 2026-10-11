@@ -1,176 +1,181 @@
-# Sib's Trading – Ordering & Inventory System
+# Sib's Trading: Ordering and Inventory Management System
 
-An ordering and inventory system for **Sib's Trading**, a raw chicken and chicken by-products business. Customers browse stock and place orders. The admin manages stock, orders and customers.
+An online ordering and inventory system for **Sib's Trading**, a business that sells raw chicken and chicken by-products.
 
-The whole app is **one file**: `sibs-trading.html` (plain HTML, CSS and JavaScript, no framework, no build step). It runs in one of two modes:
-
-| Mode | When | Where data lives |
-|---|---|---|
-| **Cloud** (normal) | the page is hosted on the web and can reach Firebase | Your Firebase Realtime Database, shared by every device |
-| **Local** (fallback) | Firebase cannot be reached, or `USE_FIREBASE` is `false` | The browser on one device only. The app shows a notice when this happens |
-
-**Before cloud mode works you must follow `FIREBASE_SETUP.md`** (publish the rules in `database.rules.json`, enable sign-in, create the admin account). Never leave the database in test mode.
+- **Live website:** <https://sibstrading.vercel.app>
+- More detail: [TECHNICAL_NOTES.md](TECHNICAL_NOTES.md) (settings and behaviour), [FIREBASE_SETUP.md](FIREBASE_SETUP.md) (Firebase setup guide), [SYSTEM_RECOMMENDATIONS.md](SYSTEM_RECOMMENDATIONS.md) (strengths, weaknesses and next steps)
 
 ---
 
-## Features (what is actually implemented)
+## Business Name and Description
 
-### Login and roles
-- **One login page** for customers and admin. After logging in, the system decides the role: admin goes to the Admin dashboard, customers go to the Shop.
-- **Cloud mode:** sign-in uses Firebase Authentication (email and password). The role comes from the database: only user IDs listed under `/admins` (which only you can edit, in the Firebase console) are admins. A customer profile cannot make someone an admin.
-- **Forgot password** (cloud): sends a real reset email. Admin can also send a customer a reset email.
-- **One login per browser:** every tab of the same browser shares the same login. Opening the site in a second tab opens the account that is already logged in; a login page left open in another tab switches to it as soon as someone logs in; logging out in one tab logs out all of them. To switch accounts, log out first.
-- **Automatic log out:** after 12 hours with no click or key press (in any tab) the person is logged out and asked to log in again. This only applies when the app is opened again after that long; logging in again always works and starts a fresh timer. Because the login is now kept when the browser is closed, **use Log out on shared computers.**
-- **Login lock (works quietly):** after too many wrong tries (`MAX_TRIES`, default 3) log in is paused for `LOCK_MS` (default 1 minute), with a countdown that survives a refresh. The login page does **not** announce the number of tries; the wrong-password message is just "Wrong email or password. Please try again." In cloud mode Firebase's own servers also slow down repeated failed sign-ins. The app's own lock is kept in the browser, so it can be reset by clearing browser data; a lock enforced only on a server needs a server function (see `SYSTEM_RECOMMENDATIONS.md`).
-- **Local mode:** usernames instead of emails, passwords stored as salted PBKDF2 hashes in the browser, admin resets customer passwords.
+**Sib's Trading** sells raw chicken and chicken by-products by weight. Products include whole chicken and cuts (whole chicken, breast, thigh, drumstick, wings) and by-products (feet, liver, gizzard, heart, neck, skin). The owner can add, change or remove products at any time.
 
-### Customer features
-- Browse by category (Whole & cuts, By-products) with search, description, price per unit and live availability.
-- Basket, checkout (pickup or delivery, payment method, note), order confirmation with a printable and downloadable receipt.
-- **Contact number checks:** phone fields (checkout, Account, and the shop number in Settings) accept **digits only, no more than 11**: letters and symbols are removed as you type or paste, and extra digits are ignored. A customer's number must be a valid mobile number: **exactly 11 digits starting with 09** (a pasted `+63 917 ...` is converted to `0917 ...`). Only blatant placeholders are refused (the same digit all the way through such as 09111111111 or 09999999999, and 09123456789 / 09876543210); **real numbers are never rejected for their pattern**. The number is shown neatly (0917 123 4567), a clear message appears under the field when something is wrong, and the check is repeated when the order is saved. It checks the **format**; it cannot know whether the number is in service (that needs an SMS verification code, which needs a server).
-- **My orders** with a progress bar (Pending, Confirmed, Processing, Ready, Completed) and receipt.
-- **Account** page: edit name, phone, delivery address; change password.
-- **Notifications at every step of the order:** a bell with an unread count and a list, so customers can follow their order. Each step gives a notification, a pop-up and a short chime (the chime can be switched off in the bell panel):
-  1. **Order received**: right after the customer places the order.
-  2. **Order confirmed**: when the admin confirms it.
-  3. **Order being prepared**: when it moves to Processing.
-  4. **Order ready for pickup / ready for delivery**: when it is Ready (the wording follows the order type).
-  5. **Order completed**: when it is Completed.
-  6. **Order cancelled**: if it is cancelled.
-  The bell keeps the whole history of each order (newest first), it is still there after a reload, and clicking an entry opens that order with its progress bar. Updates arrive **live while the app is open**.
+**Who uses the system**
 
-### Admin features
-- **Layout:** a left sidebar (Dashboard, Orders, Inventory, Customers, Reports, Settings, with your name and Log out at the bottom) and a slim top bar with the page name and the notification bell. On phones the sidebar becomes a slide-in menu opened with the menu button. Customers keep a top navigation bar.
-- **Customer view (preview):** a **Customer view** page in the sidebar shows the shop exactly as customers see it, inside a browser-style frame, with a **Desktop / Phone** switch, search and category filters. It is read-only (no ordering), shows the same products, prices, descriptions and availability, and updates live when you change stock or prices or a customer orders. The dashboard also has a small **Customer view** card with the first four products and a button to open the full preview.
-- **Dashboard:** revenue, sales today, total/pending/completed orders, customers, products in stock, low/out-of-stock, restock list, latest orders.
-- **Orders:** search, status filters with counts, change status (customer is notified for the statuses you choose), details window, receipts. Cancelling returns the items to stock once.
-- **Inventory:** products with search, filter and sort; In Stock / Low Stock / Out of Stock; stock-in and stock-out totals; add/edit/delete products; **manual stock** (Add, Remove, Set count) with a note; stock history with product filter.
-- **Customers:** list; reset email (cloud) or password (local); deactivate/remove.
-- **Reports:** orders, revenue, average order, top products, orders by status; CSV export.
-- **Notifications:** bell with unread count for each new order; click to open the order.
-- **Settings:** receipt address, phone, message, currency; change password; system problems list.
+- **Customers** create an account, browse the shop, order for pickup or delivery, get a receipt and receive a notification at each step of their order.
+- **The admin (shop owner)** manages products and stock by hand, processes orders, sees reports, manages customer accounts and is notified of every new order.
 
-### Notification settings (safe to edit)
-At the top of the script, in the **NOTIFICATION SETTINGS** block:
+## Problem Being Solved
 
-| Setting | Meaning |
+A raw chicken business sells perishable goods by weight, so it must always know exactly how much of each product is on hand, and customers need to know what is available and what they will pay before they order. When this is handled by phone calls, messages and paper notes, it commonly leads to:
+
+- orders that are lost, forgotten or misunderstood;
+- stock counts that are out of date, so more can be sold than the shop really has;
+- prices and totals worked out by hand, which can be wrong;
+- no record of past orders and no receipts;
+- customers who cannot tell whether their order has been received or is ready;
+- an owner who is not told straight away that a new order has arrived.
+
+Sib's Trading replaces this with one system: every order is recorded with a receipt number, prices and totals are calculated by the system, stock goes down automatically with each order and can never go below zero, every stock change is logged, and both the owner and the customer are notified as the order moves forward.
+
+## Feature List
+
+**Landing page**
+
+- The public first page shows the business name and tagline, a live price board of the products, and a clear call to action: a **Log in** button and a **Create customer account** link.
+
+**Users and accounts**
+
+- Register (full name, email or username, password), log in and log out.
+- Forgot password: a reset link is sent by email (online mode).
+- Account page: edit name, phone number and delivery address; change password.
+- One login is shared by all tabs of the same browser; automatic log out after 12 hours without activity.
+- Repeated wrong passwords pause log in for a short time.
+
+**Roles and ownership**
+
+- Two roles: **Admin** and **Customer**. The role is decided by the database (only accounts listed under `admins` are admins), not by anything the browser sends.
+- Customers can only see their own orders and notifications. Admin pages are not available to customers.
+
+**Complete CRUD on Products (main entity)**
+
+| Action | What the system does |
 |---|---|
-| `ENABLE_ADMIN_DASHBOARD_NOTIFICATIONS` | Admin bell for new orders |
-| `ENABLE_CUSTOMER_NOTIFICATIONS` | Customer bell |
-| `NOTIFY_CUSTOMER_ORDER_RECEIVED` | "Order received" right after ordering |
-| `NOTIFY_CUSTOMER_ON_STATUSES` | Order steps that notify the customer, after "received". Default: all of them (`'confirmed'`, `'processing'`, `'ready'`, `'completed'`, `'cancelled'`). Delete any you do not want announced |
-| `SHOW_NOTIFICATION_TOASTS` | Pop-up when a notification arrives |
-| `TOAST_MS`, `MAX_TOASTS` | How long a pop-up message stays (default 3500 ms) and the most shown at once (default 3). The same message is never shown twice at once, and clicking a message closes it |
-| `NOTIFICATION_SOUND` | Short "ding-dong" chime when a notification arrives (admin and customers). Each person can switch it off with **Sound: on/off** in the bell panel; that choice is remembered on their device |
+| Create | Admin > Inventory > Add product: name, description, category, unit (kg, pc, pack), price, low-stock level, starting stock |
+| Read | Customers browse the shop with search and categories. Admin sees an inventory table with search, stock-status filter (In Stock, Low Stock, Out of Stock), sorting, stock in / out totals and a full stock history |
+| Update | Edit a product. Manual stock changes: add stock, remove stock or set an exact count, each with a note |
+| Delete | Delete a product after a confirmation window. Past orders and receipts are kept |
 
-The wording of customer messages is in the function `customerNotice`.
+**Orders**
 
-**Not included:** email, SMS and phone push notifications (they need a server-side piece; see `SYSTEM_RECOMMENDATIONS.md`). Notifications show only while the app is open.
+- Customer: basket, checkout (pickup or delivery, payment method, note), order confirmation, and a receipt that can be printed or downloaded. My orders shows a progress bar (Pending, Confirmed, Processing, Ready, Completed).
+- Admin: orders list with search and status filters, order details, status updates, cancelling an order (the stock is returned once).
+- Totals are calculated by the system from the product prices, never typed in by the customer.
 
-### Inventory and order rules
-- Stock changes only through logged actions (manual add/remove/set, orders, cancellations), each written to the stock history.
-- Stock can never go below zero.
-- Order lines and totals are built from the product records, never from the basket. In cloud mode the totals shown are always recalculated from the order lines.
-- **Number boxes take numbers only:** every quantity and price box (shop, basket, admin stock, product price, low-stock level, starting stock) accepts only digits and one decimal point. Letters such as "e", and "+" or "-", are removed as they are typed or pasted; a comma counts as a decimal point; at most 2 decimals; items sold per `pc` or `pack` take whole numbers only (the decimal point is removed). Phones show a number keypad.
-- `pc` and `pack` items must be whole numbers; limit of 500 per product per order (configurable).
-- Cloud mode: stock is taken with atomic "subtract if enough is left" steps, so two customers cannot both take the last unit. **With the included server function (Step 8 of `FIREBASE_SETUP.md`) the whole basket is reserved in one all-or-nothing step on the server, prices and totals come only from the database, and customers cannot write stock or orders at all.**
-- Notifications are created after the order is saved and can never cancel an order. Problems are listed in **Settings > System problems**.
+**Inventory**
 
-### Not included
-Email/SMS/phone push, GPT/OpenAI, product images, returns/refunds, server-side order processing.
+- Stock is changed manually by the admin (delivery, spoiled stock, corrections). It can never go below zero and every change is logged.
+- Low-stock level per product, with a restock list on the dashboard.
 
----
+**Notifications**
 
-## Technology (actual)
+- Admin: a bell with an unread count and a short sound for every new order.
+- Customer: a notification and sound at every step: received, confirmed, being prepared, ready for pickup or delivery, completed, cancelled.
 
-| Part | What is used |
+**Admin panel**
+
+- Dashboard (revenue, orders, customers, stock), reports (today, 7 days, 30 days, all time, top products, CSV export), customers page (send password reset, deactivate or reactivate) and a **Customer view** preview of the shop.
+
+**Validation**
+
+- Contact number: digits only, exactly 11 digits starting with 09; obvious placeholders such as 09111111111 are refused.
+- Quantities and prices: digits and one decimal point only; whole numbers for items sold per piece or pack; limits per order; a quantity above the stock is refused.
+- Email format, minimum password length, required fields, delivery address required for delivery orders.
+- Clear messages; a wrong value turns the box red.
+
+**Design**: responsive for desktop, tablet and phone; light and dark themes; labelled, keyboard-friendly forms.
+
+## Tech Stack
+
+| Part | Technology |
 |---|---|
-| App | One HTML file: plain JavaScript, CSS |
-| Database | Firebase Realtime Database (cloud mode) or browser `localStorage` (local mode) |
-| Sign-in | Firebase Authentication, email and password (cloud) |
-| Firebase SDK | Firebase JavaScript SDK v10.14.1, loaded from Google's CDN when the page opens |
-| Hosting | Not included: use Firebase Hosting or any static host |
-| Email / SMS / OpenAI | None |
+| Frontend | HTML5, CSS3 and JavaScript in a single file (no framework, no build step) |
+| Authentication | Firebase Authentication (email and password); passwords are hashed by Firebase |
+| Database | Firebase Realtime Database with security rules (`database.rules.json`) |
+| Server logic (optional) | Firebase Cloud Functions, Node.js 20 (`firebase-admin`, `firebase-functions`) |
+| Local fallback | Browser `localStorage`; Web Crypto PBKDF2-SHA256 password hashing |
+| Hosting | Vercel (live site: sibstrading.vercel.app); GitHub Pages or Firebase Hosting also work |
+| Fonts | Google Fonts: Bricolage Grotesque, DM Sans |
+| Testing (development only) | Playwright with headless Chromium; Node.js for the server order logic |
 
-## Installation and running
+## Setup and Run Instructions
 
-1. Follow **`FIREBASE_SETUP.md`** (rules, sign-in, admin account, hosting).
-2. Open the hosted address and log in as the admin.
-3. Click **Load sample products** (or add your own), set real prices, then add your first stock.
+### What is in the repository
 
-**Quick local try-out (no Firebase):** set `USE_FIREBASE=false` near the top of the script and open the file in a browser. Log in with `admin` / `admin123` and change the password in Settings.
-
-### Environment variables / database setup
-There is **no `.env` file**: this is a browser app, and anything in it is visible to visitors. The Firebase web configuration in `FIREBASE_CONFIG` identifies your project but is not a secret; the rules protect the data. `OPENAI_API_KEY` and `ADMIN_NOTIFICATION_EMAIL` only make sense once a server exists (see recommendations); they are not used here.
-
----
-
-## What I can safely change manually
-
-All in `sibs-trading.html`. Open it in a text editor and search for the text shown.
-
-| What | Setting | Search for |
-|---|---|---|
-| Business name | `APP_NAME` (and the `<title>` tag at the top of the file) | `MANUAL CONFIGURATION` |
-| Tagline | `APP_TAGLINE` | same block |
-| Use cloud or local mode | `USE_FIREBASE` | `DATABASE (FIREBASE)` |
-| Firebase project | `FIREBASE_CONFIG` | same block |
-| Firebase SDK version | `FIREBASE_SDK_VERSION` | same block |
-| Default currency (first run) | `DEFAULT_CURRENCY`. Afterwards: Admin > Settings | `MANUAL CONFIGURATION` |
-| Receipt number format | `ORDER_PREFIX`, `ORDER_NUMBER_OFFSET` | same block |
-| Low-stock default for new products | `LOW_STOCK_DEFAULT` | same block |
-| Max quantity per product per order | `MAX_QTY_PER_ITEM` | same block |
-| Automatic log out after inactivity | `SESSION_IDLE_MINUTES` (default 720 = 12 hours; `0` = never) | same block |
-| How long the loading animation shows when changing tabs | `PAGE_TRANSITION_MS` (default 600; `0` switches it off; skipped automatically on devices set to "reduce motion") | same block |
-| Login tries and lock time | `MAX_TRIES`, `LOCK_MS` | same block |
-| Minimum password length | `MIN_PASSWORD_LENGTH` | same block |
-| How orders are placed in cloud mode | `SERVER_ORDERS`: `'auto'` (server function if deployed, else the browser method; default), `'required'` (server function only; use after Step 8), `'off'` | `DATABASE (FIREBASE)` |
-| Server function region | `FUNCTIONS_REGION` in the app and `REGION` in `functions/index.js` (must match) | same |
-| Which phone numbers are accepted | `PHONE_REGION`: `'PH'` (Philippine mobile numbers, default) or `'ANY'` (any international number, 8 to 15 digits with an optional +). Also update the phone rules in `database.rules.json` if you change it | same block |
-| Notification switches and which statuses notify | see the notification table above | `NOTIFICATION SETTINGS` |
-| Customer notification wording | `customerNotice` | `The wording a customer sees` |
-| Sample products (first run, or "Load sample products") | `SAMPLE_PRODUCTS` | `Sample products` |
-| Local-mode default admin login | `DEFAULT_ADMIN_USERNAME`, `DEFAULT_ADMIN_PASSWORD` | `DEFAULT ADMIN ACCOUNT` |
-| Theme colors and fonts | the `:root{ ... }` variables at the top of the `<style>` | `--pine`, `--saffron` |
-| Receipt look | `RECEIPT_CSS` | `RECEIPT_CSS` |
-| Security rules | `database.rules.json` (then publish in the Firebase console) | |
-| Admin notification email, OpenAI settings | **not in this app** (need a server) | |
-
-**Do not change** (marked `IMPORTANT` in the code): storage keys, the password section (local mode), the inventory logic section, and the `STORES` section (order placement, stock and cancellation). They keep stock, history and orders consistent.
-
----
-
-## Troubleshooting
-
-| Problem | Likely cause and fix |
+| File or folder | Purpose |
 |---|---|
-| Yellow notice "Cloud database not reachable" | The page can't load Firebase (offline, blocked network, or opened inside a preview that blocks it). The app is in local mode and data stays on this device. Host it and open the real address |
-| "Could not read data from the database" | Rules are missing or wrong. Publish `database.rules.json` |
-| Admin logs in but sees the Shop | The admin's User UID is not under `/admins` with the value `true`. See setup step 3 |
-| "This account is not active" | The customer was deactivated (Customers page) or has no profile. Reactivate in Customers |
-| Customer can't register | Email already used, password under 6 characters, or Email/Password sign-in not enabled |
-| "I am still logged in after closing the browser" | By design: the login is shared by all tabs and kept until you log out or the inactivity limit passes. Use **Log out**, especially on shared computers |
-| I want to log in as a different person | Log out first (it logs out every tab), then log in with the other account |
-| "You were logged out because of inactivity" | No click or key press for `SESSION_IDLE_MINUTES`. An admin who leaves the screen open only to hear alerts will be logged out after that time; raise it, or set it to `0`, if you prefer |
-| "Enter a valid mobile number" / "does not look right" | The number must be exactly 11 digits starting with 09. Only placeholders like 09111111111 or 09123456789 are refused. For overseas customers, set `PHONE_REGION` to `'ANY'` (and update the rules file) |
-| Print does nothing | Some embedded views block printing. Use **Download** and print the file |
-| "Log in is paused" | Too many wrong tries in a row. Wait for the countdown (default 1 minute; browser-based, per device) |
-| No notification on the customer's phone while the app is closed | Not supported: notifications appear only while the app is open |
-| No sound when a notification arrives | Browsers allow sound only after you have clicked or tapped the page once (logging in counts). After a page reload, click anywhere once. Also check **Sound: on** in the bell panel, that the device is not muted, and that `NOTIFICATION_SOUND` is `true`. The chime is generated by the browser; there is no sound file to replace |
-| Something went wrong message | A problem was caught and, if you are the admin, listed in Settings > System problems |
+| `index.html` | The whole application (the file is called `sibs-trading.html`; rename it to `index.html` for hosting on Vercel or GitHub Pages) |
+| `README.md` | This file |
+| `FIREBASE_SETUP.md` | Detailed Firebase setup guide |
+| `database.rules.json` | Database security rules (use these first) |
+| `database.rules.secure.json` | Stricter rules, only after the Cloud Function is deployed |
+| `functions/` | Optional Cloud Function for server-side ordering |
+| `firebase.json` | Firebase deployment settings |
+| `.gitignore` | Keeps `node_modules` and private files out of the repository |
 
-## Security notes (honest summary)
-- Cloud mode: passwords are handled by Firebase Authentication. Access control is enforced by Firebase using `database.rules.json`, **not** by this page. Publish the rules.
-- Until you deploy the server function (Step 8 of `FIREBASE_SETUP.md`, needs the Blaze plan), the rules let a customer **lower** a product's stock when ordering; without a server they cannot verify that a decrease matches a real order, so a skilled, signed-in customer could misuse this. **After Step 8** (function deployed, `database.rules.secure.json` published, `SERVER_ORDERS='required'`) customers cannot write stock or orders directly and the server checks everything.
-- Local mode has no server at all: someone with browser developer tools can alter data on their own device.
-- The login lock is stored in the browser; Firebase adds its own limit on repeated failed sign-ins.
+### A. Quickest way to run it (no accounts needed)
 
-## Tested
+1. Download or clone the repository.
+2. Open `index.html` in a text editor, find `const USE_FIREBASE=true;` and change `true` to `false`. Save.
+3. Double-click `index.html` to open it in Chrome, Edge or Firefox. Data is kept in that browser only.
+4. Log in as the admin (see Test Accounts), change the password in Settings and add stock in Inventory. Then click **Log out**, choose **Create customer account**, register, place an order, log out, and log in as the admin again to see the order and its notification. Local mode keeps its data in one browser, so use the same browser for all of this.
 
-**Local mode** (headless Chromium, final file): 284 automated checks pass in the browser in local mode. A further 54 tests check the server order rules directly (`functions/orderLogic.js`). They cover login and roles, lockout, tampered sessions, hash upgrade, manual stock, ordering and totals, live updates between two tabs, admin and customer notifications (received, ready for pickup, ready for delivery, click-through, mark all read), cancellation, the last-unit race, a notification failure not breaking an order, receipts, CSV export, search, the admin sidebar (desktop and the phone slide-in menu), the logo going home, the tab-change loading animation (timing, fast clicks, log out during loading, reduced motion), number boxes (no letters, e, + or -; one decimal point; 2 decimals; whole numbers for pieces; pasted text cleaned; basket and admin boxes; wrong values still refused), server-side ordering (the real server rules run against the stand-in: all-or-nothing baskets, prices and totals from the database, hostile calls refused, strict rules block direct stock and order writes, stale baskets, automatic fallback, `'required'` mode) and the server rules on their own (12 people ordering the last unit at once give exactly one order, 60 two-item baskets racing for 10 items, no negative stock, stock restored after a failure, validation), pop-up messages (repeated clicks show one message, at most three at a time, click to dismiss, red quantity box), customer notifications at every order step (received, confirmed, preparing, ready for pickup or delivery, completed, cancelled: bell, pop-up and chime each time, history kept after reload, repeat status not duplicated, only-Ready setting still works), contact-number checks (digits only and at most 11, pasted +63 numbers converted, only placeholders refused, many real-looking numbers accepted, account and shop number fields, the international setting), the Customer view preview (same products, prices and availability as the real shop, read-only, search, categories, desktop/phone size, live updates, no sideways scroll on a phone), the inactivity message not repeating after logging in again (cloud and local), no tries count on the login page, the shared login between tabs (second tab opens the logged-in account, log out and log in follow across tabs, tampered sessions rejected, inactivity log out), and the notification sound (it plays for admin and customer when it should, not for your own order, and stays silent when switched off).
+### B. Online with Firebase (shared database, used by the live site)
 
-**Cloud mode** (86 checks pass), **against a stand-in for Firebase that I built for testing, not against real Firebase.** They check my code's logic: sign-in through the same page, admin-from-database role, registration, ordering with atomic stock, live notifications both ways, tampered totals ignored, customer isolation, deactivation, password reset, fallback to local mode.
+1. Create a Firebase project at <https://console.firebase.google.com>. Add a **Realtime Database** and enable **Authentication > Sign-in method > Email/Password**.
+2. Copy your project's web configuration into `FIREBASE_CONFIG` near the top of `index.html` (the repository already contains the project's configuration; it identifies the project and is not a password).
+3. **Realtime Database > Rules:** paste the contents of `database.rules.json` and click **Publish**. Do not leave the database in test mode.
+4. **Authentication > Users > Add user:** create the admin (email and password). Copy the new user's **User UID**.
+5. **Realtime Database > Data:** add `admins`, then a child named with that UID and the value `true`.
+6. Upload the files to a GitHub repository and rename `sibs-trading.html` to `index.html`. Host it on **Vercel** (Add New > Project > import the repository, framework preset "Other", leave the build command empty) or on GitHub Pages (Settings > Pages > Deploy from branch, `main`, `/ (root)`).
+7. **Authentication > Settings > Authorized domains:** add the address of your site without `https://`, for example `sibstrading.vercel.app`. Without this, logging in fails on the live site.
+8. Open the site, log in as the admin, click **Load sample products** on the dashboard, set the prices in Inventory and add the first stock.
 
-The sound was tested by checking that the browser is asked to play the two chime notes; I cannot hear audio, so please listen to it once yourself.
+### C. Optional: server-side ordering (Cloud Function)
 
-**Not tested:** the real Firebase service, your project's configuration, the security rules (they were never run on Firebase's rules engine; use the Rules Playground), the browser print dialog, Safari and Firefox, phones in real use.
+Needs the Firebase Blaze (pay as you go) plan. In the folder that contains `firebase.json`: `cd functions`, `npm install`, `cd ..`, then `firebase deploy --only functions`. Afterwards publish `database.rules.secure.json` and set `SERVER_ORDERS` to `'required'` in `index.html`. Full steps: `FIREBASE_SETUP.md` (Step 8). Until then the app orders directly from the browser, which still works.
+
+### Forgot the admin password
+
+Online: reset it in the Firebase console (Authentication > Users). Local mode: clear the site data for the page in the browser (this deletes the local data) and the default admin returns.
+
+**Verified from a clean machine:** **[REPLACE: date, computer and browser on which you followed steps A and B from scratch]**
+
+## AI Tools Used
+
+| Tool | What it was used for |
+|---|---|
+| **Claude** (Anthropic), chat assistant | Wrote and refactored the application code (login and registration, roles, product and order CRUD, inventory rules, receipts, notifications and sounds, validation, admin sidebar, customer-view preview, reports); wrote the Firebase integration, the database security rules and the optional Cloud Function; wrote automated tests; helped find and fix bugs reported by the student; wrote the documentation. |
+
+**The student's part:** **[REPLACE: describe in your own words what you did.]** The student chose the business and described every feature wanted, created the Firebase project and the GitHub repository, deployed the site, tested the live website, reported problems with screenshots, and decided what to change.
+
+**Limits of the AI help:** the AI could not open the student's Firebase project or GitHub account, and its own tests of the online features used a simulated Firebase, so the real service must be checked by the student. The deployed application does not call any AI service; AI was used only to build it.
+
+## Test Accounts
+
+| Role | Mode | Username or email / password | Notes |
+|---|---|---|---|
+| Admin | Local mode (built in) | `admin` / `admin123` | Created automatically on first run. Change it in Settings. Demo password for local testing only. |
+| Regular user | Local mode | `testcustomer` / `test1234` | Not preset: create it with **Create customer account** on the login page. |
+| Admin | Online (live site) | `admin@gmail.com` / `Admin123` | The admin account created in Firebase (setup B, steps 4 and 5). |
+| Regular user | Online (live site) | **[REPLACE: customer email]** / **[REPLACE: password]** | Create it with **Create customer account** on the live site. |
+
+Passwords need at least 6 characters. For a test order use a contact number in the accepted format, for example `09175550123` (only the format is checked).
+
+## Security and Validation Summary
+
+- **Passwords hashed:** Firebase Authentication stores salted, hashed passwords; the application never sees or stores them. Local mode uses PBKDF2-SHA256 with a random salt.
+- **Roles:** the role comes from the database (`admins` list); customers only read their own orders (`database.rules.json`).
+- **Validation:** checked in the page and again when an order is saved.
+- **Delete confirmation:** deleting a product (and cancelling an order, removing or deactivating a customer, resetting data) asks for confirmation first.
+- **No secrets committed:** no private keys, no `.env` file and no API secrets. The Firebase web configuration is a public project identifier; access is controlled by Firebase Authentication and the database rules. The demo admin password for local mode is documented above. `.gitignore` excludes `node_modules` and private files.
+
+## Testing and Known Limitations
+
+During development the system was checked with 424 automated tests (370 browser tests with Playwright and 54 tests of the server order rules with Node.js). The online behaviour was tested against a simulated Firebase, not the live service. The automated tests are not part of this repository.
+
+- In local mode, data is kept in one browser on one device.
+- The contact-number check confirms the format only, not that the number is in service.
+- Notifications and sounds work while the app is open; phone push, SMS and email to the owner are not included.
+- Until the optional Cloud Function is deployed, ordering runs from the customer's browser (see `FIREBASE_SETUP.md`).
