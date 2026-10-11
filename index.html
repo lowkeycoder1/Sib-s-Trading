@@ -1109,6 +1109,7 @@ async function cloudStart(){
   if(!state.session)render();
 }
 async function onAuthChange(user){
+  const firstLook=!cloud.authSeen;cloud.authSeen=true;   // the very first answer from Firebase = a session restored from an earlier visit
   try{
     if(state.registering)return;
     if(!user){
@@ -1116,7 +1117,7 @@ async function onAuthChange(user){
       return;
     }
     if(state.session&&state.session.uid===user.uid)return;
-    if(idleExpired()){   // restored from an earlier visit, but unused for too long
+    if(firstLook&&idleExpired()){   // restored from an earlier visit, but unused for too long (a fresh log in is never judged by old activity)
       await cloud.m.signOut(cloud.auth);state.loginMsg='Your session ended because of inactivity. Please log in again.';render();return;
     }
     await establishSession(user);
@@ -1496,7 +1497,6 @@ function renderLogin(){
       <div class="field"><label for="lu">${cl?'Email':'Username'}</label><input id="lu" name="username" ${cl?'type="email" inputmode="email" autocomplete="username"':'autocomplete="username"'} autocapitalize="none" value="${esc(state.loginUser)}"></div>
       <div class="field"><label for="lp">Password</label><input id="lp" name="password" type="password" autocomplete="current-password"></div>
       <button class="btn primary block" id="loginBtn">Log in</button></fieldset></form>
-      <div class="hint" style="margin-top:10px">${MAX_TRIES} wrong tries in a row pauses log in for ${Math.round(LOCK_MS/60000)===1?'1 minute':Math.round(LOCK_MS/1000)+' seconds'}.</div>
       <p class="switch"><button type="button" class="linkbtn" data-act="forgot">Forgot password?</button></p>
       <p class="switch" style="margin-top:6px">New here? <button type="button" class="linkbtn" data-act="loginMode" data-v="register">Create customer account</button></p>`;
   }
@@ -2198,6 +2198,7 @@ const forms={
     const d=fd(f),cl=MODE==='cloud',typed=(d.username||'').trim(),u=cl?typed:typed.toLowerCase();state.loginUser=u;
     if(!u||!d.password){loginErr(cl?'Enter your email and password.':'Enter your username and password.');return;}
     if(cl&&!EMAIL_RE.test(u)){loginErr('Enter the email address you registered with.');return;}
+    touchActivity(true);   // logging in is activity: the old "last active" time must never count against a new log in
     state.busy=true;
     const btn=$('#loginBtn');if(btn){btn.disabled=true;btn.textContent='Checking…';}
     let ok=false,count=true,msg='';
@@ -2228,7 +2229,7 @@ const forms={
     if(!count){loginErr(msg);return;}
     const l=getLock();l.fails=(l.fails||0)+1;
     if(l.fails>=MAX_TRIES){l.until=Date.now()+LOCK_MS;state.loginMsg='';}
-    else{const left=MAX_TRIES-l.fails;state.loginMsg=`Wrong ${cl?'email':'username'} or password. ${left} ${left===1?'try':'tries'} left.`;}
+    else state.loginMsg=`Wrong ${cl?'email':'username'} or password. Please try again.`;   // the number of tries is not announced
     setLock(l);render();
   },
   async userRegister(f){
@@ -2238,7 +2239,7 @@ const forms={
     if(cl){
       if(!EMAIL_RE.test(u)){loginErr('Enter a valid email address.');return;}
       // Customers are only ever created with the customer role: a profile under /users and nothing under /admins.
-      const m=cloud.m;state.registering=true;let cred=null;
+      const m=cloud.m;state.registering=true;let cred=null;touchActivity(true);
       try{
         cred=await m.createUserWithEmailAndPassword(cloud.auth,u,pw);
         await m.set(R('users/'+cred.user.uid),{name,email:u,phone:'',address:'',created:new Date().toISOString()});
