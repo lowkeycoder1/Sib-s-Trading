@@ -459,7 +459,15 @@ const LOCK_MS=60000;                      // ...and how long the pause lasts (60
    blocks it), the app automatically falls back to local mode and says so. */
 const USE_FIREBASE=true;
 const FIREBASE_SDK_VERSION='10.14.1';     // Version of the Firebase web SDK that is loaded.
-const FIREBASE_CONNECT_TIMEOUT_MS=8000;   // How long to wait for Firebase before falling back to local mode.
+const FIREBASE_CONNECT_TIMEOUT_MS=8000;
+// How orders are placed in cloud mode:
+//   'auto'     = through the server function "placeOrder" when it is deployed, otherwise the older browser method.
+//   'required' = ONLY through the server function (use this once it is deployed and database.rules.secure.json is published).
+//   'off'      = the older browser method only.
+// See FIREBASE_SETUP.md (Step 8). The server method is safer: the server checks prices and stock and takes every item
+// in a basket in one all-or-nothing step, so nobody can lower stock without a real order.
+const SERVER_ORDERS='auto';
+const FUNCTIONS_REGION='asia-southeast1';   // must match REGION in functions/index.js   // How long to wait for Firebase before falling back to local mode.
 // This is your web app's Firebase configuration. These values identify your project; they are not
 // passwords. Your data is protected by Firebase Authentication and the database rules in
 // database.rules.json (see FIREBASE_SETUP.md). Never leave the database in "test mode".
@@ -1026,7 +1034,11 @@ async function cloudInit(){
   const app=m.initializeApp(FIREBASE_CONFIG);
   const auth=m.getAuth(app);
   try{await m.setPersistence(auth,m.browserLocalPersistence);}catch(e){}   // the login is shared by all tabs of this browser, and kept until log out or the inactivity limit
-  cloud.m=m;cloud.auth=auth;cloud.db=m.getDatabase(app);
+  try{   // the Cloud Functions SDK is optional: if it cannot load, orders use the browser method
+    const f=await import(base+'firebase-functions.js');
+    m.getFunctions=f.getFunctions;m.httpsCallable=f.httpsCallable;
+  }catch(e){console.warn('Cloud Functions SDK not loaded; orders use the browser method.',e);}
+  cloud.m=m;cloud.auth=auth;cloud.app=app;cloud.db=m.getDatabase(app);
 }
 // Starts listening to a path. Returns a function that stops listening.
 function listen(target,cb){
@@ -1179,6 +1191,26 @@ function authMessage(err){
    ===================================================================== */
 let store=null;
 
+// Places the order on the server (Cloud Function "placeOrder"). Returns the saved order, or null if the function is not deployed.
+async function placeOrderOnServer(inp,lines){
+  const m=cloud.m;
+  try{
+    // Only WHAT and HOW MUCH is sent. The server looks up names, prices and stock itself and works out the total.
+    const call=m.httpsCallable(m.getFunctions(cloud.app,FUNCTIONS_REGION),'placeOrder');
+    const res=await call({lines:lines.map(l=>({id:l.p.id,qty:l.qty})),
+      customer:{name:inp.name,phone:inp.phone,type:inp.type,address:inp.address,note:inp.note},payment:inp.payment});
+    const o=res&&res.data;
+    if(!o||!o.id||!o.no)throw new Error('The server sent back an incomplete order.');
+    if(state.announced&&o.receivedNoticeId)state.announced.add(o.receivedNoticeId);   // their own "Order received" needs no pop-up
+    return o;
+  }catch(err){
+    const code=String((err&&err.code)||'');
+    if(code==='functions/not-found'){cloud.serverOrdersMissing=true;return null;}   // not deployed (yet)
+    if(['functions/invalid-argument','functions/failed-precondition','functions/permission-denied','functions/unauthenticated'].includes(code))throw userErr(err.message);   // clear messages written by the server
+    logError('order',err);throw userErr(ORDER_FAIL);
+  }
+}
+
 /* ---------- LOCAL STORE (data kept in this browser) ---------- */
 const localStore={
   async placeOrder(inp){
@@ -1277,6 +1309,12 @@ const cloudStore={
     const m=cloud.m,s=state.session;
     const lines=cartLines();
     if(!lines.length)throw userErr('Your basket is empty.');
+    if(SERVER_ORDERS!=='off'&&m.httpsCallable&&!cloud.serverOrdersMissing){
+      const viaServer=await placeOrderOnServer(inp,lines);
+      if(viaServer)return viaServer;
+    }
+    if(SERVER_ORDERS==='required')throw userErr('Ordering is temporarily unavailable. Please try again in a little while.');
+    // ---- the older browser method (used when the server function is not deployed and SERVER_ORDERS is not 'required') ----
     // 1. Read the latest product records straight from the database. Prices and names are taken from here.
     const fresh=(await m.get(R('products'))).val()||{};
     const items=[];
